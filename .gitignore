@@ -1,0 +1,13 @@
+# AutoCAD transient/lock/backup files
+*.dwl
+*.dwl2
+*.bak
+*.err
+
+# Python
+__pycache__/
+*.pyc
+
+# scratch drawings the router creates/uses for manual GUI testing
+router/gui_selftest_report.txt
+router/test_router.dwg
