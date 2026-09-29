@@ -208,6 +208,51 @@
             (list (cons "TYPE" "CROSS") (cons "BLOCK" "SCADA_TRAY_CROSS") (cons "WIDTH" nil)
                   (cons "BLOCK_WIDTH" 29.0) (cons "TAKEOFF" 57.0) (cons "BRANCH_TAKEOFF" nil)
                   (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 0.0)))
+          ))))
+    ;; SCADA_V2: D:\BLOCK\new\SCADA_TRAY_*_V2.dwg -- a DIFFERENT design style
+    ;; from SCADA_BASIC's reference-symbol blocks: real large-radius bend
+    ;; geometry (actual ARC entities, not a small scaled symbol), so BASE_OFFSET
+    ;; is non-zero here (block origin does NOT sit at the fitting's corner).
+    ;; STRAIGHT_V2 IS confirmed byte-identical to the already-measured "750
+    ;; tray" ("750 tray" AcDbDynamicBlockTrueName / DXF coords match exactly),
+    ;; so it reuses that GENERATED_LADDER config unchanged.
+    ;; ELBOW_V2 measured from its own DXF (arcs + tangent lines): bend centre
+    ;; at local (-686.73,521.0) exactly equals both arms' centreline
+    ;; intersection (confirmed: horizontal arm centreline y=(510.16+531.84)/2
+    ;; =521.0; vertical arm centreline x=(-675.9-697.57)/2=-686.735) -- so
+    ;; BASE_OFFSET = -(that point) = (686.73,-521.0). Arms sit at East+South in
+    ;; the raw block (not East+North), so ROTATION_OFFSET=90 to match the
+    ;; router's reference. BLOCK_WIDTH/TAKEOFF below are a STARTING HYPOTHESIS
+    ;; from hand-measured arc radii (outer rail radius ~887.5, inner ~264.5,
+    ;; centre-to-centre ~622.9) -- NOT yet confirmed by a real-engine join-delta
+    ;; test the way Elbow/Tee/Cross were for SCADA_BASIC; do that before
+    ;; trusting this for real drawings (see block_spec_measured.md).
+    (cons "SCADA_V2"
+      (list
+        (cons "BLOCK_DIR" "D:/BLOCK/new/")
+        (cons "STRAIGHT_MODE" "GENERATED_LADDER")
+        (cons "STRAIGHT_BLOCK" "SCADA_TRAY_STRAIGHT_V2")
+        (cons "STRAIGHT_RAIL_THICKNESS" 20.0)
+        (cons "STRAIGHT_RUNG_WIDTH" 40.0)
+        (cons "STRAIGHT_RUNG_SPACING" 250.0)
+        (cons "STRAIGHT_RUNG_FIRST_OFFSET" 125.0)
+        (cons "STRAIGHT_SUPPORTED_WIDTHS" (list 150.0 300.0 450.0 600.0 750.0))
+        (cons "FITTINGS"
+          (list
+            ;; HYPOTHESIS, pending real-engine 0mm confirmation:
+            (list (cons "TYPE" "ELBOW") (cons "BLOCK" "SCADA_TRAY_ELBOW_V2") (cons "WIDTH" nil)
+                  (cons "BLOCK_WIDTH" 622.93) (cons "TAKEOFF" 878.933) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" 90.0) (cons "BASE_OFFSET" (list 686.73 -521.0)))
+            ;; NEEDS_USER_CONFIRMATION: TEE_V2/CROSS_V2 use a chamfered-rect
+            ;; style (not simple corner fillets) -- not yet measured/verified.
+            ;; Left unconfigured (nil) rather than guessed; router safely falls
+            ;; back to scale=1/takeoff=0 with a loud warning if these are used.
+            (list (cons "TYPE" "TEE") (cons "BLOCK" "SCADA_TRAY_TEE_V2") (cons "WIDTH" nil)
+                  (cons "BLOCK_WIDTH" nil) (cons "TAKEOFF" nil) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" nil) (cons "BASE_OFFSET" nil))
+            (list (cons "TYPE" "CROSS") (cons "BLOCK" "SCADA_TRAY_CROSS_V2") (cons "WIDTH" nil)
+                  (cons "BLOCK_WIDTH" nil) (cons "TAKEOFF" nil) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" nil) (cons "BASE_OFFSET" nil))
           ))))))
 
 (if (not (boundp (quote *CTR-CURRENT-PROFILE*)))
