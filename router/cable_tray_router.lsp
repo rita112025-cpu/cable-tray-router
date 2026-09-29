@@ -265,13 +265,27 @@
             (list (cons "TYPE" "ELBOW") (cons "BLOCK" "SCADA_TRAY_ELBOW_V2") (cons "WIDTH" nil)
                   (cons "BLOCK_WIDTH" 622.9333) (cons "TAKEOFF" 576.0) (cons "BRANCH_TAKEOFF" nil)
                   (cons "ROTATION_OFFSET" 270.0) (cons "BASE_OFFSET" (list -576.0 576.0)))
-            ;; NEEDS_USER_CONFIRMATION: TEE_V2/CROSS_V2 use a chamfered-rect
-            ;; style (not simple corner fillets) -- not yet measured/verified.
-            ;; Left unconfigured (nil) rather than guessed; router safely falls
-            ;; back to scale=1/takeoff=0 with a loud warning if these are used.
+            ;; CONFIRMED by real accoreconsole engine: raw dump (insert at
+            ;; origin, explode) identified 3 openings via their unambiguous
+            ;; 2-vertex LWPOLYLINE rail-end caps -- Main-RIGHT local
+            ;; (430.6667,170.0), Main-LEFT (-430.6667,170.0), Branch
+            ;; (0,600.6667) (each = avg of that opening's 2 rail centres).
+            ;; Main centreline y=170.0 (exact, both main openings share it);
+            ;; Branch centreline x=0 (exact). Junction J=(0,170.0) -- NOT the
+            ;; block origin. BASE_OFFSET=-J=(0,-170.0) (same derivation
+            ;; pattern as ELBOW_V2, independent of rotation). MAIN_TAKEOFF and
+            ;; BRANCH_TAKEOFF measured SEPARATELY from J to each opening and
+            ;; found equal (430.6667) for this block -- not assumed. Native
+            ;; orientation (by arm travel direction) is already Main E-W /
+            ;; Branch North, matching the router's own reference, so
+            ;; ROTATION_OFFSET=0 (confirmed via ctr-tee-rotation/ctr-dir-angle,
+            ;; not from the drawing looking right). Verified on all 4 legal
+            ;; TEE orientations (branch N/W/S/E), 6 rail joints each, full 2D
+            ;; point-to-named-entity comparison, MAXDIST 0.00015mm (float
+            ;; noise) -- see block_spec_measured.md.
             (list (cons "TYPE" "TEE") (cons "BLOCK" "SCADA_TRAY_TEE_V2") (cons "WIDTH" nil)
-                  (cons "BLOCK_WIDTH" nil) (cons "TAKEOFF" nil) (cons "BRANCH_TAKEOFF" nil)
-                  (cons "ROTATION_OFFSET" nil) (cons "BASE_OFFSET" nil))
+                  (cons "BLOCK_WIDTH" 317.3333) (cons "TAKEOFF" 430.6667) (cons "BRANCH_TAKEOFF" 430.6667)
+                  (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 -170.0)))
             (list (cons "TYPE" "CROSS") (cons "BLOCK" "SCADA_TRAY_CROSS_V2") (cons "WIDTH" nil)
                   (cons "BLOCK_WIDTH" nil) (cons "TAKEOFF" nil) (cons "BRANCH_TAKEOFF" nil)
                   (cons "ROTATION_OFFSET" nil) (cons "BASE_OFFSET" nil))

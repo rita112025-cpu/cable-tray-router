@@ -480,6 +480,48 @@ T26 SCADA_V2 ELBOW_V2 corrected tangent-geometry model (real-engine CONFIRMED,
   (t-check "STRAIGHT op is the plain 6-field tuple again (no rail-override fields)"
     (and (= 6 (length in-op)) (= 6 (length out-op))))
 
+  (princ "
+T27 SCADA_V2 TEE_V2 (real-engine CONFIRMED: 4 orientations x 6 rail joints,
+    full 2D point-to-named-entity comparison, MAXDIST 0.00015mm float noise
+    -- see block_spec_measured.md). Junction J=(0,170.0) local (NOT block
+    origin) derived from 2 exact centreline intersections (Main y=170.0,
+    Branch x=0); BASE_OFFSET=-J; MAIN_TAKEOFF and BRANCH_TAKEOFF measured
+    separately and found equal (430.6667) for this block, not assumed;
+    native orientation already matches the router reference (Main E-W /
+    Branch North) so ROTATION_OFFSET=0, confirmed via ctr-tee-rotation.")
+  (setq *CTR-FITTING-CONFIG* (ctr-profile-fittings "SCADA_V2"))
+  (setq cfg (ctr-get-fitting-config "TEE" nil))
+  (setq *CTR-FITTING-CONFIG* saved-cfg)
+  (t-check "SCADA_V2 TEE BLOCK_WIDTH=317.3333" (t-near 317.3333 (ctr-cfg-get cfg "BLOCK_WIDTH")))
+  (t-check "SCADA_V2 TEE TAKEOFF=430.6667" (t-near 430.6667 (ctr-cfg-get cfg "TAKEOFF")))
+  (t-check "SCADA_V2 TEE BRANCH_TAKEOFF=430.6667" (t-near 430.6667 (ctr-cfg-get cfg "BRANCH_TAKEOFF")))
+  (t-check "SCADA_V2 TEE BASE_OFFSET=(0,-170.0)"
+    (t-pt-near (ctr-cfg-get cfg "BASE_OFFSET") '(0.0 -170.0)))
+  (t-check "SCADA_V2 TEE ROTATION_OFFSET=0" (t-near 0.0 (ctr-cfg-get cfg "ROTATION_OFFSET")))
+
+  (t-reset)
+  (setq plan (t-plan (list (list 317.3333 "SCADA_V2"
+                                 (list (list 0.0 3000.0) (list 3000.0 3000.0) (list 6000.0 3000.0)))
+                           (list 317.3333 "SCADA_V2"
+                                 (list (list 3000.0 3000.0) (list 3000.0 9000.0))))))
+  (t-check "no planner errors" (null (cadr plan)))
+  (t-check "3 straights + 1 tee" (and (= 3 (t-count (car plan) "STRAIGHT"))
+                                      (= 1 (t-count-fit (car plan) "TEE"))))
+  (t-check "native Main E-W / Branch North needs ZERO net rotation (base 0 + offset 0), real-engine confirmed"
+    (t-near 0.0 (rem (nth 4 (car (t-ops plan "FITTING"))) (* 2.0 pi))))
+  (t-check "insert_pt = node + BASE_OFFSET = (3000,3000)+(0,-170) = (3000,2830), real-engine confirmed"
+    (t-pt-near (nth 3 (car (t-ops plan "FITTING"))) '(3000.0 2830.0)))
+  (setq ops (t-ops plan "STRAIGHT"))
+  (setq in-op nil out-op nil)
+  (foreach o ops
+    (if (t-pt-near (nth 1 o) '(0.0 3000.0)) (setq in-op o))
+    (if (t-pt-near (nth 2 o) '(3000.0 9000.0)) (setq out-op o)))
+  (t-check "found main-WEST and branch straights" (and in-op out-op))
+  (t-check "main-WEST trimmed by MAIN_TAKEOFF=430.6667 to (2569.3333,3000)"
+    (t-pt-near (nth 2 in-op) '(2569.3333 3000.0)))
+  (t-check "branch trimmed by BRANCH_TAKEOFF=430.6667, starts at (3000,3430.6667)"
+    (t-pt-near (nth 1 out-op) '(3000.0 3430.6667)))
+
   (setq *CTR-FITTING-CONFIG* saved-cfg *CTR-QUIET* nil)
   (princ (strcat "\n\nRESULT: " (itoa *T-PASS*) " passed, " (itoa *T-FAIL*) " failed."))
   (princ)
