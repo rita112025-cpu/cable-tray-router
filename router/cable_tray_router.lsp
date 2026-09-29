@@ -239,10 +239,32 @@
         (cons "STRAIGHT_SUPPORTED_WIDTHS" (list 150.0 300.0 450.0 600.0 750.0))
         (cons "FITTINGS"
           (list
-            ;; HYPOTHESIS, pending real-engine 0mm confirmation:
+            ;; CONFIRMED by real accoreconsole engine (insert+explode+2D
+            ;; point-to-point comparison against the fitting's actual rail
+            ;; centreline tangent points, all 4 joints 0.0000mm on the
+            ;; West+North test orientation -- see block_spec_measured.md).
+            ;; Block's true corner (0,0,0 in the source file, the 4 fillet
+            ;; arcs' shared centre = the arc-radius pivot) is NOT the router's
+            ;; "fitting centre" -- that is the SHARP MITRE CORNER where the
+            ;; two rail-pairs' own centreline tangent LINES (not the arc
+            ;; pivot) actually cross: local (576,-576) ((887.4667+264.5333)/2
+            ;; = 576 is the tray centreline radius; the tangent line for the
+            ;; "North" arm is x=576, for the "West" arm is y=-576, crossing at
+            ;; (576,-576)). BASE_OFFSET = -(that point) = (-576,576) (see
+            ;; ctr-plan-node's insert_pt formula). TAKEOFF=576 = distance from
+            ;; that corner to the tray centreline tangent point on EITHER arm
+            ;; (they're equal here) -- an ordinary flat-cut GENERATED_LADDER
+            ;; join, no per-rail termination needed; earlier belief that the
+            ;; two rails tangent at different stations (264.53/887.47) was a
+            ;; coordinate mix-up: those are radii from the ARC PIVOT, not
+            ;; longitudinal takeoffs from the actual corner. Native block
+            ;; orientation is West+North (by tangent/travel direction, not by
+            ;; which quadrant the arc pivot's radius points into) so
+            ;; ROTATION_OFFSET=270 (not 90) is needed to bring it to the
+            ;; router's East+North reference at rotation 0.
             (list (cons "TYPE" "ELBOW") (cons "BLOCK" "SCADA_TRAY_ELBOW_V2") (cons "WIDTH" nil)
-                  (cons "BLOCK_WIDTH" 622.93) (cons "TAKEOFF" 878.933) (cons "BRANCH_TAKEOFF" nil)
-                  (cons "ROTATION_OFFSET" 90.0) (cons "BASE_OFFSET" (list 686.73 -521.0)))
+                  (cons "BLOCK_WIDTH" 622.9333) (cons "TAKEOFF" 576.0) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" 270.0) (cons "BASE_OFFSET" (list -576.0 576.0)))
             ;; NEEDS_USER_CONFIRMATION: TEE_V2/CROSS_V2 use a chamfered-rect
             ;; style (not simple corner fillets) -- not yet measured/verified.
             ;; Left unconfigured (nil) rather than guessed; router safely falls
@@ -666,6 +688,7 @@ Temporary test value: scale = 1."))
   (cond ((= (rem (+ d1 1) 4) d2) d1)
         ((= (rem (+ d2 1) 4) d1) d2)
         (T nil)))
+
 ;; TEE reference: main E-W, branch North(1)
 (defun ctr-tee-rotation (branch) (rem (+ branch 3) 4))
 ;; CROSS: symmetric
