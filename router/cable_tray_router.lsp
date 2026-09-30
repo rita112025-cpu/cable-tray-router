@@ -229,7 +229,7 @@
     ;; trusting this for real drawings (see block_spec_measured.md).
     (cons "SCADA_V2"
       (list
-        (cons "BLOCK_DIR" "D:/BLOCK/new/")
+        (cons "BLOCK_DIR" "D:/github/ezdxf/scada-v2-block-integration/new/")
         (cons "STRAIGHT_MODE" "GENERATED_LADDER")
         (cons "STRAIGHT_BLOCK" "SCADA_TRAY_STRAIGHT_V2")
         (cons "STRAIGHT_RAIL_THICKNESS" 20.0)
