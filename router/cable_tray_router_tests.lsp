@@ -449,9 +449,9 @@ T26 SCADA_V2 ELBOW_V2 corrected tangent-geometry model (real-engine CONFIRMED,
   (setq cfg (ctr-get-fitting-config "ELBOW" nil))
   (setq *CTR-FITTING-CONFIG* saved-cfg)
   (t-check "SCADA_V2 ELBOW BLOCK_WIDTH=622.9333" (t-near 622.9333 (ctr-cfg-get cfg "BLOCK_WIDTH")))
-  (t-check "SCADA_V2 ELBOW TAKEOFF=576.0" (t-near 576.0 (ctr-cfg-get cfg "TAKEOFF")))
-  (t-check "SCADA_V2 ELBOW BASE_OFFSET=(-576,576)"
-    (t-pt-near (ctr-cfg-get cfg "BASE_OFFSET") '(-576.0 576.0)))
+  (t-check "SCADA_V2 ELBOW TAKEOFF=644.2667" (t-near 644.2667 (ctr-cfg-get cfg "TAKEOFF")))
+  (t-check "SCADA_V2 ELBOW BASE_OFFSET=(110.7333,55.0)"
+    (t-pt-near (ctr-cfg-get cfg "BASE_OFFSET") '(110.7333 55.0)))
   (t-check "SCADA_V2 ELBOW ROTATION_OFFSET=270" (t-near 270.0 (ctr-cfg-get cfg "ROTATION_OFFSET")))
   (t-check "no leftover RAIL_TERMINATION/RAIL_TAKEOFF_* keys (retracted architecture fully removed)"
     (and (null (assoc "RAIL_TERMINATION" cfg)) (null (assoc "RAIL_TAKEOFF_NEAR" cfg))
@@ -465,18 +465,18 @@ T26 SCADA_V2 ELBOW_V2 corrected tangent-geometry model (real-engine CONFIRMED,
                                         (= 1 (t-count-fit (car plan) "ELBOW"))))
   (t-check "West+North native block needs ZERO net rotation (90 base + 270 offset = 360 = 0), real-engine confirmed"
     (t-near 0.0 (rem (nth 4 (car (t-ops plan "FITTING"))) (* 2.0 pi))))
-  (t-check "insert_pt = node + BASE_OFFSET = (3000,0)+(-576,576) = (2424,576), real-engine confirmed"
-    (t-pt-near (nth 3 (car (t-ops plan "FITTING"))) '(2424.0 576.0)))
+  (t-check "insert_pt = node + BASE_OFFSET = (3000,0)+(110.7333,55) = (3110.7333,55), engine + Human GUI confirmed"
+    (t-pt-near (nth 3 (car (t-ops plan "FITTING"))) '(3110.7333 55.0)))
   (setq ops (t-ops plan "STRAIGHT"))
   (setq in-op nil out-op nil)
   (foreach o ops
     (if (t-pt-near (nth 1 o) '(0.0 0.0)) (setq in-op o))
     (if (t-pt-near (nth 2 o) '(3000.0 2000.0)) (setq out-op o)))
   (t-check "found both straights" (and in-op out-op))
-  (t-check "incoming: single flat TAKEOFF=576, trimmed to (2424,0) -- NOT per-rail"
-    (t-pt-near (nth 2 in-op) '(2424.0 0.0)))
-  (t-check "outgoing: single flat TAKEOFF=576, starts at (3000,576) -- NOT per-rail"
-    (t-pt-near (nth 1 out-op) '(3000.0 576.0)))
+  (t-check "incoming: single flat TAKEOFF=644.2667, trimmed to (2355.7333,0) -- NOT per-rail"
+    (t-pt-near (nth 2 in-op) '(2355.7333 0.0)))
+  (t-check "outgoing: single flat TAKEOFF=644.2667, starts at (3000,644.2667) -- NOT per-rail"
+    (t-pt-near (nth 1 out-op) '(3000.0 644.2667)))
   (t-check "STRAIGHT op is the plain 6-field tuple again (no rail-override fields)"
     (and (= 6 (length in-op)) (= 6 (length out-op))))
 

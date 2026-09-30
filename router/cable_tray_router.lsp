@@ -262,9 +262,14 @@
             ;; which quadrant the arc pivot's radius points into) so
             ;; ROTATION_OFFSET=270 (not 90) is needed to bring it to the
             ;; router's East+North reference at rotation 0.
+            ;; 2026-09-30 CORRECTION (read-only diagnostics + engine + Human GUI PASS @ 300 mm):
+            ;; the block file in new/ has its arc pivot at (-686.7333,521), NOT (0,0,0); the two
+            ;; opening axes cross at (-110.7333,-55) => BASE_OFFSET=(110.7333,55.0). The arm openings
+            ;; lie 644.2667 from that joint (576 tangent radius + 68.2667 stub) => TAKEOFF=644.2667.
+            ;; Earlier values (-576,576) / 576 assumed the pivot at the origin and the tangent point.
             (list (cons "TYPE" "ELBOW") (cons "BLOCK" "SCADA_TRAY_ELBOW_V2") (cons "WIDTH" nil)
-                  (cons "BLOCK_WIDTH" 622.9333) (cons "TAKEOFF" 576.0) (cons "BRANCH_TAKEOFF" nil)
-                  (cons "ROTATION_OFFSET" 270.0) (cons "BASE_OFFSET" (list -576.0 576.0)))
+                  (cons "BLOCK_WIDTH" 622.9333) (cons "TAKEOFF" 644.2667) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" 270.0) (cons "BASE_OFFSET" (list 110.7333 55.0)))
             ;; CONFIRMED by real accoreconsole engine: raw dump (insert at
             ;; origin, explode) identified 3 openings via their unambiguous
             ;; 2-vertex LWPOLYLINE rail-end caps -- Main-RIGHT local
