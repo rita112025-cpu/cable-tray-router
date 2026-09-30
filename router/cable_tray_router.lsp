@@ -287,8 +287,8 @@
                   (cons "BLOCK_WIDTH" 317.3333) (cons "TAKEOFF" 430.6667) (cons "BRANCH_TAKEOFF" 430.6667)
                   (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 -170.0)))
             (list (cons "TYPE" "CROSS") (cons "BLOCK" "SCADA_TRAY_CROSS_V2") (cons "WIDTH" nil)
-                  (cons "BLOCK_WIDTH" nil) (cons "TAKEOFF" nil) (cons "BRANCH_TAKEOFF" nil)
-                  (cons "ROTATION_OFFSET" nil) (cons "BASE_OFFSET" nil))
+                  (cons "BLOCK_WIDTH" 317.3333333) (cons "TAKEOFF" 430.6666667) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 -170.0)))
           ))))))
 
 (if (not (boundp (quote *CTR-CURRENT-PROFILE*)))
