@@ -1527,6 +1527,23 @@ Specify next point or <Enter to finish>: "))
             (princ line))))))
   (princ))
 
+;; CTVER: which Router is REALLY loaded?  Identity comes from a loader / generated
+;; router_version.lsp (*CTR-ROUTER-...*); a core loaded without them says so explicitly.
+(defun ctr-ver-val (sym fallback)
+  (if (and (boundp sym) (eval sym)) (eval sym) fallback))
+(defun c:CTVER ()
+  (princ (strcat (chr 10) "Cable Tray Router"))
+  (princ (strcat (chr 10) "Version : " (ctr-ver-val (quote *CTR-ROUTER-VERSION*) "UNSTAMPED (core loaded without a loader)")))
+  (princ (strcat (chr 10) "Profile : " *CTR-CURRENT-PROFILE*
+                 "  (loader default: " (ctr-ver-val (quote *CTR-ROUTER-DEFAULT-PROFILE*) "n/a") ")"))
+  (princ (strcat (chr 10) "Commit  : " (ctr-ver-val (quote *CTR-ROUTER-COMMIT*) "UNKNOWN")
+                 "  (core file last changed in " (ctr-ver-val (quote *CTR-ROUTER-CORE-COMMIT*) "UNKNOWN") ")"))
+  (princ (strcat (chr 10) "Branch  : " (ctr-ver-val (quote *CTR-ROUTER-BRANCH*) "UNKNOWN")))
+  (princ (strcat (chr 10) "Source  : " (ctr-ver-val (quote *CTR-ROUTER-SOURCE*) "UNKNOWN (not loaded through a loader)")))
+  (princ (strcat (chr 10) "Width   : " (rtos *CTR-CURRENT-WIDTH* 2 0)))
+  (princ (strcat (chr 10) "Core    : " *CTR-VERSION* "  " *CTR-SOURCE-ID*))
+  (princ))
+
 (princ (strcat "\ncable_tray_router " *CTR-VERSION*
-               " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD  (advanced: CTRAY, CTRAYUPDATE)"))
+               " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD, CTVER  (advanced: CTRAY, CTRAYUPDATE)"))
 (princ)
