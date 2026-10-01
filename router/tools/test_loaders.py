@@ -49,7 +49,7 @@ def run(parts: list[str], marker: str = "T:") -> str:
     script = "\n".join(["FILEDIA", "0"] + parts + ["_QUIT", "Y", ""])
     (work / "run.scr").write_bytes(script.encode("mbcs", errors="replace"))
     proc = subprocess.run([ACCORE, "/s", str(work / "run.scr"), "/l", "en-US"], stdin=subprocess.DEVNULL, capture_output=True,
-                          timeout=600, cwd=str(work))
+                          timeout=90, cwd=str(work))
     data = proc.stdout
     text = data.decode("utf-16-le", "replace") if b"\x00" in data[:200] else data.decode("utf-8", "replace")
     return text
@@ -77,6 +77,17 @@ def main() -> int:
     before = hashlib.sha256(UNTOUCHED.read_bytes()).hexdigest()
     for f in (V1_LOADER, V2_LOADER, V1_CORE, V2_CORE, STAMP):
         check("exists: %s" % f, f.exists())
+    for f in (V1_LOADER, V2_LOADER, STAMP, V2_CORE):
+        code = strip_lisp(f.read_text(encoding="utf-8"))
+        # parentheses balanced outside strings/comments (an unbalanced loader makes AutoCAD wait for input)
+        depth = 0
+        instr = False
+        for ch in code:
+            if ch == '"':
+                instr = not instr
+            elif not instr:
+                depth += (ch == "(") - (ch == ")")
+        check("balanced parentheses: %s" % f.name, depth == 0, "depth %d" % depth)
     for f in (V1_LOADER, V2_LOADER, STAMP):
         check("no backslash in generated %s" % f.name, "\\" not in f.read_text(encoding="utf-8"))
     stamp_text = STAMP.read_text(encoding="utf-8")

@@ -81,7 +81,7 @@ LOADER_FUNCTION = r'''
              (ctr-say (strcat "Source: " *CTR-ROUTER-SOURCE*))
              (ctr-say (strcat "Profile: " *CTR-CURRENT-PROFILE*))
              (ctr-say (strcat "Router commit: " *CTR-ROUTER-COMMIT*))
-             (ctr-say "Type CTVER to check what is loaded."))))))
+             (ctr-say "Type CTVER to check what is loaded.")))))))
   (princ))
 '''
 
