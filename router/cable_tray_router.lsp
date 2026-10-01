@@ -1531,7 +1531,7 @@ Specify next point or <Enter to finish>: "))
 ;; router_version.lsp (*CTR-ROUTER-...*); a core loaded without them says so explicitly.
 (defun ctr-ver-val (sym fallback)
   (if (and (boundp sym) (eval sym)) (eval sym) fallback))
-(defun c:CTVER ()
+(defun ctr-ver-print ()
   (princ (strcat (chr 10) "Cable Tray Router"))
   (princ (strcat (chr 10) "Version : " (ctr-ver-val (quote *CTR-ROUTER-VERSION*) "UNSTAMPED (core loaded without a loader)")))
   (princ (strcat (chr 10) "Profile : " *CTR-CURRENT-PROFILE*
@@ -1543,6 +1543,11 @@ Specify next point or <Enter to finish>: "))
   (princ (strcat (chr 10) "Width   : " (rtos *CTR-CURRENT-WIDTH* 2 0)))
   (princ (strcat (chr 10) "Core    : " *CTR-VERSION* "  " *CTR-SOURCE-ID*))
   (princ))
+
+;; CTVER: show the identity, then offer profile / width right away (Enter keeps the current values).
+(defun c:CTVER ()
+  (ctr-ver-print)
+  (c:CTSET))
 
 (princ (strcat "\ncable_tray_router " *CTR-VERSION*
                " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD, CTVER  (advanced: CTRAY, CTRAYUPDATE)"))

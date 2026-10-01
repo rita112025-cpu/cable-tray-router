@@ -87,7 +87,7 @@ LOADER_FUNCTION = r'''
 
 V1_CTVER = r'''
 ;; the V1 core has no CTVER of its own
-(defun c:CTVER ()
+(defun ctr-ver-print ()
   (princ (strcat (chr 10) "Cable Tray Router"))
   (princ (strcat (chr 10) "Version : " *CTR-ROUTER-VERSION*))
   (princ (strcat (chr 10) "Profile : " *CTR-CURRENT-PROFILE* "  (loader default: " *CTR-ROUTER-DEFAULT-PROFILE* ")"))
@@ -97,6 +97,9 @@ V1_CTVER = r'''
   (princ (strcat (chr 10) "Width   : " (rtos *CTR-CURRENT-WIDTH* 2 0)))
   (princ (strcat (chr 10) "Core    : " *CTR-VERSION* "  " *CTR-SOURCE-ID*))
   (princ))
+(defun c:CTVER ()
+  (ctr-ver-print)
+  (c:CTSET))
 '''
 
 

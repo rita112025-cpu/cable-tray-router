@@ -101,11 +101,11 @@ def main() -> int:
           str(V2_CORE).replace("\\", "/") in V2_LOADER.read_text(encoding="utf-8") and str(STAMP).replace("\\", "/") in V2_LOADER.read_text(encoding="utf-8"))
 
     # S1 raw core, no loader
-    t = run([lisp(V2_CORE), "(c:CTVER)"])
+    t = run([lisp(V2_CORE), "(ctr-ver-print)"])
     check("S1 raw V2 core says UNSTAMPED", any("UNSTAMPED" in l for l in t.splitlines()))
 
     # S2 V1: a stale SCADA_V2 selection must be reset; V2 must not be selectable in the V1 core
-    t = run([lisp(V1_CORE), '(setq *CTR-CURRENT-PROFILE* "SCADA_V2")', NOLOAD, lisp(V1_LOADER), "(c:CTVER)",
+    t = run([lisp(V1_CORE), '(setq *CTR-CURRENT-PROFILE* "SCADA_V2")', NOLOAD, lisp(V1_LOADER), "(ctr-ver-print)",
              '(princ (strcat (chr 10) "T:NAMES=" (vl-prin1-to-string (ctr-profile-names)) (chr 10)))'])
     out = "\n".join(l for l in t.splitlines() if not l.startswith(("(", " ")))
     check("S2 V1 announces 'Loaded: V1 STABLE'", "[CTRAY] Loaded: V1 STABLE" in out)
@@ -117,7 +117,7 @@ def main() -> int:
     check("S2 V1 core has no SCADA_V2 profile", names and "SCADA_V2" not in names[0], str(names))
 
     # S3 V2
-    t = run([lisp(V2_CORE), lisp(STAMP), NOLOAD, lisp(V2_LOADER), "(c:CTVER)",
+    t = run([lisp(V2_CORE), lisp(STAMP), NOLOAD, lisp(V2_LOADER), "(ctr-ver-print)",
              '(princ (strcat (chr 10) "T:NAMES=" (vl-prin1-to-string (ctr-profile-names)) (chr 10)))'])
     out = "\n".join(l for l in t.splitlines() if not l.startswith(("(", " ")))
     check("S3 V2 announces 'Loaded: SCADA_V2'", "[CTRAY] Loaded: SCADA_V2" in out)
