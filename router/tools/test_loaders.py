@@ -93,6 +93,12 @@ def main() -> int:
     stamp_text = STAMP.read_text(encoding="utf-8")
     commit = re.search(r'\*CTR-ROUTER-COMMIT\* "([^"]+)"', stamp_text).group(1)
     check("stamp commit is a clean short hash (no +dirty)", re.fullmatch(r"[0-9a-f]{7,}", commit) is not None, commit)
+    # stamp semantics: the stamped SOURCE commit must carry the same Router core as the worktree (not "equal to HEAD")
+    def blob(rev):
+        return subprocess.run(["git", "-C", str(WORK.parent), "rev-parse", rev + ":router/cable_tray_router.lsp"],
+                              capture_output=True, text=True).stdout.strip()
+    if re.fullmatch(r"[0-9a-f]{7,}", commit):
+        check("stamp source commit has the same cable_tray_router.lsp as HEAD (stamp not stale)", blob(commit) == blob("HEAD") != "", "%s vs HEAD" % commit)
     v1blob = subprocess.run(["git", "-C", str(WORK.parent), "show", "365645a:router/cable_tray_router.lsp"], capture_output=True, check=True).stdout
     check("stable core == git blob 365645a", V1_CORE.read_bytes() == v1blob)
     check("stable core is read-only", not (V1_CORE.stat().st_mode & 0o200))
