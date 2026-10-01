@@ -61,7 +61,7 @@
           (cons "ROTATION_OFFSET" rot) (cons "BASE_OFFSET" (car (list bo))))))
 
 ;; ------------------------------------------------------------------
-(defun ctr-run-tests (/ saved-cfg net plan p1 p2 info ops st cfg)
+(defun ctr-run-tests (/ saved-cfg net plan p1 p2 info ops st cfg o in-op out-op)
   (setq *T-PASS* 0 *T-FAIL* 0 *CTR-QUIET* T)
   (setq saved-cfg *CTR-FITTING-CONFIG*)
   (setq *CTR-FITTING-CONFIG* (t-config 0.0 0.0 nil))   ; neutral config for T00-T07
@@ -434,6 +434,93 @@ T24 legacy 2-tuple path (width pts) still defaults to profile DEFAULT")
   (setq plan (ctr-plan net 't-avail))
   (t-check "renders exactly like before profiles existed (bare block name, no $ prefix)"
     (= "SCADA_TRAY_ELBOW" (nth 2 (car (t-ops plan "FITTING")))))
+
+  (princ "
+T26 SCADA_V2 ELBOW_V2 corrected tangent-geometry model (real-engine CONFIRMED,
+    all 4 rail joints 0.0000mm on this exact scenario -- see
+    block_spec_measured.md). Earlier per-rail-longitudinal-termination
+    belief was a coordinate mix-up (radii from the arc's own pivot mistaken
+    for per-rail longitudinal takeoffs); the corrected model is an ordinary
+    flat-cut: BASE_OFFSET=(-576,576) moves the router's fitting-centre
+    reference from the arc pivot to the true sharp mitre corner, after which
+    BOTH rails share one TAKEOFF=576 and differ only in the transverse
+    (+-BLOCK_WIDTH/2) direction, same as any other GENERATED_LADDER elbow.")
+  (setq *CTR-FITTING-CONFIG* (ctr-profile-fittings "SCADA_V2"))
+  (setq cfg (ctr-get-fitting-config "ELBOW" nil))
+  (setq *CTR-FITTING-CONFIG* saved-cfg)
+  (t-check "SCADA_V2 ELBOW BLOCK_WIDTH=622.9333" (t-near 622.9333 (ctr-cfg-get cfg "BLOCK_WIDTH")))
+  (t-check "SCADA_V2 ELBOW TAKEOFF=644.2667" (t-near 644.2667 (ctr-cfg-get cfg "TAKEOFF")))
+  (t-check "SCADA_V2 ELBOW BASE_OFFSET=(110.7333,55.0)"
+    (t-pt-near (ctr-cfg-get cfg "BASE_OFFSET") '(110.7333 55.0)))
+  (t-check "SCADA_V2 ELBOW ROTATION_OFFSET=270" (t-near 270.0 (ctr-cfg-get cfg "ROTATION_OFFSET")))
+  (t-check "no leftover RAIL_TERMINATION/RAIL_TAKEOFF_* keys (retracted architecture fully removed)"
+    (and (null (assoc "RAIL_TERMINATION" cfg)) (null (assoc "RAIL_TAKEOFF_NEAR" cfg))
+         (null (assoc "RAIL_TAKEOFF_FAR" cfg))))
+
+  (t-reset)
+  (setq plan (t-plan (list (list 622.9333 "SCADA_V2"
+                                 (list (list 0.0 0.0) (list 3000.0 0.0) (list 3000.0 2000.0))))))
+  (t-check "no planner errors" (null (cadr plan)))
+  (t-check "2 straights + 1 elbow" (and (= 2 (t-count (car plan) "STRAIGHT"))
+                                        (= 1 (t-count-fit (car plan) "ELBOW"))))
+  (t-check "West+North native block needs ZERO net rotation (90 base + 270 offset = 360 = 0), real-engine confirmed"
+    (t-near 0.0 (rem (nth 4 (car (t-ops plan "FITTING"))) (* 2.0 pi))))
+  (t-check "insert_pt = node + BASE_OFFSET = (3000,0)+(110.7333,55) = (3110.7333,55), engine + Human GUI confirmed"
+    (t-pt-near (nth 3 (car (t-ops plan "FITTING"))) '(3110.7333 55.0)))
+  (setq ops (t-ops plan "STRAIGHT"))
+  (setq in-op nil out-op nil)
+  (foreach o ops
+    (if (t-pt-near (nth 1 o) '(0.0 0.0)) (setq in-op o))
+    (if (t-pt-near (nth 2 o) '(3000.0 2000.0)) (setq out-op o)))
+  (t-check "found both straights" (and in-op out-op))
+  (t-check "incoming: single flat TAKEOFF=644.2667, trimmed to (2355.7333,0) -- NOT per-rail"
+    (t-pt-near (nth 2 in-op) '(2355.7333 0.0)))
+  (t-check "outgoing: single flat TAKEOFF=644.2667, starts at (3000,644.2667) -- NOT per-rail"
+    (t-pt-near (nth 1 out-op) '(3000.0 644.2667)))
+  (t-check "STRAIGHT op is the plain 6-field tuple again (no rail-override fields)"
+    (and (= 6 (length in-op)) (= 6 (length out-op))))
+
+  (princ "
+T27 SCADA_V2 TEE_V2 (real-engine CONFIRMED: 4 orientations x 6 rail joints,
+    full 2D point-to-named-entity comparison, MAXDIST 0.00015mm float noise
+    -- see block_spec_measured.md). Junction J=(0,170.0) local (NOT block
+    origin) derived from 2 exact centreline intersections (Main y=170.0,
+    Branch x=0); BASE_OFFSET=-J; MAIN_TAKEOFF and BRANCH_TAKEOFF measured
+    separately and found equal (430.6667) for this block, not assumed;
+    native orientation already matches the router reference (Main E-W /
+    Branch North) so ROTATION_OFFSET=0, confirmed via ctr-tee-rotation.")
+  (setq *CTR-FITTING-CONFIG* (ctr-profile-fittings "SCADA_V2"))
+  (setq cfg (ctr-get-fitting-config "TEE" nil))
+  (setq *CTR-FITTING-CONFIG* saved-cfg)
+  (t-check "SCADA_V2 TEE BLOCK_WIDTH=317.3333" (t-near 317.3333 (ctr-cfg-get cfg "BLOCK_WIDTH")))
+  (t-check "SCADA_V2 TEE TAKEOFF=430.6667" (t-near 430.6667 (ctr-cfg-get cfg "TAKEOFF")))
+  (t-check "SCADA_V2 TEE BRANCH_TAKEOFF=430.6667" (t-near 430.6667 (ctr-cfg-get cfg "BRANCH_TAKEOFF")))
+  (t-check "SCADA_V2 TEE BASE_OFFSET=(0,-170.0)"
+    (t-pt-near (ctr-cfg-get cfg "BASE_OFFSET") '(0.0 -170.0)))
+  (t-check "SCADA_V2 TEE ROTATION_OFFSET=0" (t-near 0.0 (ctr-cfg-get cfg "ROTATION_OFFSET")))
+
+  (t-reset)
+  (setq plan (t-plan (list (list 317.3333 "SCADA_V2"
+                                 (list (list 0.0 3000.0) (list 3000.0 3000.0) (list 6000.0 3000.0)))
+                           (list 317.3333 "SCADA_V2"
+                                 (list (list 3000.0 3000.0) (list 3000.0 9000.0))))))
+  (t-check "no planner errors" (null (cadr plan)))
+  (t-check "3 straights + 1 tee" (and (= 3 (t-count (car plan) "STRAIGHT"))
+                                      (= 1 (t-count-fit (car plan) "TEE"))))
+  (t-check "native Main E-W / Branch North needs ZERO net rotation (base 0 + offset 0), real-engine confirmed"
+    (t-near 0.0 (rem (nth 4 (car (t-ops plan "FITTING"))) (* 2.0 pi))))
+  (t-check "insert_pt = node + BASE_OFFSET = (3000,3000)+(0,-170) = (3000,2830), real-engine confirmed"
+    (t-pt-near (nth 3 (car (t-ops plan "FITTING"))) '(3000.0 2830.0)))
+  (setq ops (t-ops plan "STRAIGHT"))
+  (setq in-op nil out-op nil)
+  (foreach o ops
+    (if (t-pt-near (nth 1 o) '(0.0 3000.0)) (setq in-op o))
+    (if (t-pt-near (nth 2 o) '(3000.0 9000.0)) (setq out-op o)))
+  (t-check "found main-WEST and branch straights" (and in-op out-op))
+  (t-check "main-WEST trimmed by MAIN_TAKEOFF=430.6667 to (2569.3333,3000)"
+    (t-pt-near (nth 2 in-op) '(2569.3333 3000.0)))
+  (t-check "branch trimmed by BRANCH_TAKEOFF=430.6667, starts at (3000,3430.6667)"
+    (t-pt-near (nth 1 out-op) '(3000.0 3430.6667)))
 
   (setq *CTR-FITTING-CONFIG* saved-cfg *CTR-QUIET* nil)
   (princ (strcat "\n\nRESULT: " (itoa *T-PASS*) " passed, " (itoa *T-FAIL*) " failed."))

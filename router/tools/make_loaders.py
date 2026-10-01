@@ -1,0 +1,176 @@
+"""Generate the APPLOAD entry points and the V2 version stamp.  Run OUTSIDE AutoCAD (AutoCAD never needs git).
+
+    python router/tools/make_loaders.py [--block-router-dir D:\\BLOCK\\router] [--v1-commit 365645a]
+
+Writes
+  <worktree>/router/router_version.lsp            generated stamp (git-ignored; describes HEAD at generation time)
+  <block-router-dir>/stable/cable_tray_router.lsp  V1 core exported from --v1-commit, marked READ ONLY (+ SOURCE.txt)
+  <block-router-dir>/cable_tray_router_v1.lsp      V1 loader  (APPLOAD)
+  <block-router-dir>/cable_tray_router_v2.lsp      V2 loader  (APPLOAD)
+
+It never modifies <block-router-dir>/cable_tray_router.lsp or anything else in that folder, and never runs
+git commands that change state (only rev-parse / log / status / show).
+The generated LISP contains no backslash characters and no router logic.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import hashlib
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+WORKTREE = Path(__file__).resolve().parents[2]
+CORE_V2 = WORKTREE / "router" / "cable_tray_router.lsp"
+STAMP = WORKTREE / "router" / "router_version.lsp"
+
+
+def git(*args: str) -> str:
+    return subprocess.run(["git", "-C", str(WORKTREE), *args], capture_output=True, check=True, text=True,
+                          encoding="utf-8").stdout.strip()
+
+
+def lisp_path(p: Path) -> str:
+    return str(p).replace("\\", "/")
+
+
+LOADER_FUNCTION = r'''
+(defun ctr-say (msg) (princ (strcat (chr 10) "[CTRAY] " msg)))
+(defun ctr-loader-main (label profile source stamp ident / prev r ok)
+  ;; label/profile/source/stamp are fixed by the generator; ident = (version commit core-commit branch)
+  (setq prev (if (boundp (quote *CTR-ROUTER-VERSION*)) *CTR-ROUTER-VERSION* nil))
+  (cond
+    ((not (findfile source))
+     (ctr-say (strcat "LOAD FAILED (" label "): core not found: " source))
+     (ctr-say "Nothing was loaded."))
+    ((and stamp (not (findfile stamp)))
+     (ctr-say (strcat "LOAD FAILED (" label "): version stamp not found: " stamp))
+     (ctr-say "Run router/tools/make_loaders.py outside AutoCAD, then APPLOAD again. Nothing was loaded."))
+    (T
+     (if (and prev (/= prev (car ident)))
+       (ctr-say (strcat "WARNING: " prev " is already loaded in this session; loading " (car ident)
+                        " on top mixes two Routers. Use a fresh AutoCAD session for a clean load.")))
+     (setq ok T)
+     (if (not *CTR-LOADER-NOLOAD*)
+       (progn
+         (setq r (vl-catch-all-apply (quote load) (list source)))
+         (if (vl-catch-all-error-p r)
+           (progn
+             (setq ok nil)
+             (ctr-say (strcat "LOAD FAILED (" label "): " (vl-catch-all-error-message r)))
+             (ctr-say "If AutoCAD blocked the file, add its folder to TRUSTEDPATHS yourself; this loader never changes settings.")))
+         (if (and ok stamp)
+           (progn
+             (setq r (vl-catch-all-apply (quote load) (list stamp)))
+             (if (vl-catch-all-error-p r)
+               (progn (setq ok nil) (ctr-say (strcat "STAMP LOAD FAILED: " (vl-catch-all-error-message r)))))))))
+     (if ok
+       (progn
+         (if (not stamp)
+           (setq *CTR-ROUTER-VERSION* (nth 0 ident) *CTR-ROUTER-COMMIT* (nth 1 ident)
+                 *CTR-ROUTER-CORE-COMMIT* (nth 2 ident) *CTR-ROUTER-BRANCH* (nth 3 ident)
+                 *CTR-ROUTER-SOURCE* source *CTR-ROUTER-DEFAULT-PROFILE* profile))
+         (if (/= *CTR-ROUTER-VERSION* (nth 0 ident))
+           (ctr-say (strcat "WARNING: identity mismatch, stamp says " *CTR-ROUTER-VERSION* " but loader is " label))
+           (progn
+             (setq *CTR-CURRENT-PROFILE* profile)
+             (ctr-say (strcat "Loaded: " *CTR-ROUTER-VERSION*))
+             (ctr-say (strcat "Source: " *CTR-ROUTER-SOURCE*))
+             (ctr-say (strcat "Profile: " *CTR-CURRENT-PROFILE*))
+             (ctr-say (strcat "Router commit: " *CTR-ROUTER-COMMIT*))
+             (ctr-say "Type CTVER to check what is loaded.")))))))
+  (princ))
+'''
+
+V1_CTVER = r'''
+;; the V1 core has no CTVER of its own
+(defun ctr-ver-print ()
+  (princ (strcat (chr 10) "Cable Tray Router"))
+  (princ (strcat (chr 10) "Version : " *CTR-ROUTER-VERSION*))
+  (princ (strcat (chr 10) "Profile : " *CTR-CURRENT-PROFILE* "  (loader default: " *CTR-ROUTER-DEFAULT-PROFILE* ")"))
+  (princ (strcat (chr 10) "Commit  : " *CTR-ROUTER-COMMIT* "  (core file last changed in " *CTR-ROUTER-CORE-COMMIT* ")"))
+  (princ (strcat (chr 10) "Branch  : " *CTR-ROUTER-BRANCH*))
+  (princ (strcat (chr 10) "Source  : " *CTR-ROUTER-SOURCE*))
+  (princ (strcat (chr 10) "Width   : " (rtos *CTR-CURRENT-WIDTH* 2 0)))
+  (princ (strcat (chr 10) "Core    : " *CTR-VERSION* "  " *CTR-SOURCE-ID*))
+  (princ))
+(defun c:CTVER ()
+  (ctr-ver-print)
+  (c:CTSET))
+'''
+
+
+def build_stamp(head: str, core_commit: str, branch: str, dirty: bool) -> str:
+    commit = head + ("+dirty" if dirty else "")
+    return f''';;; router_version.lsp -- GENERATED by router/tools/make_loaders.py, do not edit, do not commit.
+;;; Describes the worktree at generation time ({datetime.datetime.now().isoformat(timespec="seconds")}).
+(setq *CTR-ROUTER-VERSION* "SCADA_V2")
+(setq *CTR-ROUTER-COMMIT* "{commit}")
+(setq *CTR-ROUTER-CORE-COMMIT* "{core_commit}")
+(setq *CTR-ROUTER-BRANCH* "{branch}")
+(setq *CTR-ROUTER-SOURCE* "{lisp_path(CORE_V2)}")
+(setq *CTR-ROUTER-DEFAULT-PROFILE* "SCADA_V2")
+(princ)
+'''
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--block-router-dir", type=Path, default=Path(r"D:\BLOCK\router"))
+    ap.add_argument("--v1-commit", default="365645a")
+    args = ap.parse_args()
+    out = args.block_router_dir
+    if not out.is_dir():
+        print("no such folder:", out, file=sys.stderr)
+        return 2
+    head = git("rev-parse", "--short", "HEAD")
+    branch = git("branch", "--show-current") or "(detached)"
+    core_commit = git("log", "-1", "--format=%h", "--", "router/cable_tray_router.lsp")
+    dirty = bool(git("status", "--porcelain", "--", "router/cable_tray_router.lsp"))
+    STAMP.write_text(build_stamp(head, core_commit, branch, dirty), encoding="utf-8", newline="\n")
+
+    # --- V1 stable core, exported from the commit, read only
+    v1_sha = git("rev-parse", "--short", args.v1_commit)
+    blob = subprocess.run(["git", "-C", str(WORKTREE), "show", f"{args.v1_commit}:router/cable_tray_router.lsp"],
+                          capture_output=True, check=True).stdout
+    stable = out / "stable"
+    stable.mkdir(exist_ok=True)
+    core_v1 = stable / "cable_tray_router.lsp"
+    if core_v1.exists():
+        if core_v1.read_bytes() != blob:
+            print("stable core exists and DIFFERS from %s; refusing to overwrite: %s" % (args.v1_commit, core_v1), file=sys.stderr)
+            return 3
+    else:
+        core_v1.write_bytes(blob)
+        os.chmod(core_v1, stat.S_IREAD)
+    src = stable / "SOURCE.txt"
+    if not src.exists():
+        src.write_text("V1 STABLE core exported from commit %s (%s)\nsha256 %s\nexported %s by router/tools/make_loaders.py\nREAD ONLY - do not edit;"
+                       " regenerate from git.\n" % (v1_sha, args.v1_commit, hashlib.sha256(blob).hexdigest(),
+                                                    datetime.datetime.now().isoformat(timespec="seconds")), encoding="utf-8")
+
+    header = ";;; %s -- GENERATED by router/tools/make_loaders.py (%s). APPLOAD this file.\n" \
+             ";;; Thin loader: loads ONE fixed core by absolute path, sets/verifies identity, announces it. No router logic.\n" \
+             ";;; Test hook: set *CTR-LOADER-NOLOAD* to T to skip the (load) calls (used by automated tests only).\n"
+    stamp_l = datetime.datetime.now().isoformat(timespec="seconds")
+    v1 = header % ("cable_tray_router_v1.lsp", stamp_l) + LOADER_FUNCTION + V1_CTVER + \
+        '(ctr-loader-main "V1 STABLE" "SCADA_BASIC" "%s" nil (list "V1 STABLE" "%s" "%s" "exported from %s"))\n(princ)\n' % (
+            lisp_path(core_v1), v1_sha, v1_sha, args.v1_commit)
+    v2 = header % ("cable_tray_router_v2.lsp", stamp_l) + LOADER_FUNCTION + \
+        '(ctr-loader-main "SCADA_V2" "SCADA_V2" "%s" "%s" (list "SCADA_V2" "-" "-" "-"))\n(princ)\n' % (lisp_path(CORE_V2), lisp_path(STAMP))
+    for text in (v1, v2):
+        assert "\\" not in text, "generated LISP must not contain backslashes"
+    (out / "cable_tray_router_v1.lsp").write_text(v1, encoding="utf-8", newline="\n")
+    (out / "cable_tray_router_v2.lsp").write_text(v2, encoding="utf-8", newline="\n")
+    print("stamp  :", STAMP, "commit", head + ("+dirty" if dirty else ""), "core-commit", core_commit, "branch", branch)
+    print("V1 core:", core_v1, "(read only) from", v1_sha)
+    print("V1 loader:", out / "cable_tray_router_v1.lsp")
+    print("V2 loader:", out / "cable_tray_router_v2.lsp")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

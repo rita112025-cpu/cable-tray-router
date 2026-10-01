@@ -208,6 +208,92 @@
             (list (cons "TYPE" "CROSS") (cons "BLOCK" "SCADA_TRAY_CROSS") (cons "WIDTH" nil)
                   (cons "BLOCK_WIDTH" 29.0) (cons "TAKEOFF" 57.0) (cons "BRANCH_TAKEOFF" nil)
                   (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 0.0)))
+          ))))
+    ;; SCADA_V2: D:\BLOCK\new\SCADA_TRAY_*_V2.dwg -- a DIFFERENT design style
+    ;; from SCADA_BASIC's reference-symbol blocks: real large-radius bend
+    ;; geometry (actual ARC entities, not a small scaled symbol), so BASE_OFFSET
+    ;; is non-zero here (block origin does NOT sit at the fitting's corner).
+    ;; STRAIGHT_V2 IS confirmed byte-identical to the already-measured "750
+    ;; tray" ("750 tray" AcDbDynamicBlockTrueName / DXF coords match exactly),
+    ;; so it reuses that GENERATED_LADDER config unchanged.
+    ;; ELBOW_V2 measured from its own DXF (arcs + tangent lines): bend centre
+    ;; at local (-686.73,521.0) exactly equals both arms' centreline
+    ;; intersection (confirmed: horizontal arm centreline y=(510.16+531.84)/2
+    ;; =521.0; vertical arm centreline x=(-675.9-697.57)/2=-686.735) -- so
+    ;; BASE_OFFSET = -(that point) = (686.73,-521.0). Arms sit at East+South in
+    ;; the raw block (not East+North), so ROTATION_OFFSET=90 to match the
+    ;; router's reference. BLOCK_WIDTH/TAKEOFF below are a STARTING HYPOTHESIS
+    ;; from hand-measured arc radii (outer rail radius ~887.5, inner ~264.5,
+    ;; centre-to-centre ~622.9) -- NOT yet confirmed by a real-engine join-delta
+    ;; test the way Elbow/Tee/Cross were for SCADA_BASIC; do that before
+    ;; trusting this for real drawings (see block_spec_measured.md).
+    (cons "SCADA_V2"
+      (list
+        (cons "BLOCK_DIR" "D:/github/ezdxf/scada-v2-block-integration/new/")
+        (cons "STRAIGHT_MODE" "GENERATED_LADDER")
+        (cons "STRAIGHT_BLOCK" "SCADA_TRAY_STRAIGHT_V2")
+        (cons "STRAIGHT_RAIL_THICKNESS" 20.0)
+        (cons "STRAIGHT_RUNG_WIDTH" 40.0)
+        (cons "STRAIGHT_RUNG_SPACING" 250.0)
+        (cons "STRAIGHT_RUNG_FIRST_OFFSET" 125.0)
+        (cons "STRAIGHT_SUPPORTED_WIDTHS" (list 150.0 300.0 450.0 600.0 750.0))
+        (cons "FITTINGS"
+          (list
+            ;; CONFIRMED by real accoreconsole engine (insert+explode+2D
+            ;; point-to-point comparison against the fitting's actual rail
+            ;; centreline tangent points, all 4 joints 0.0000mm on the
+            ;; West+North test orientation -- see block_spec_measured.md).
+            ;; Block's true corner (0,0,0 in the source file, the 4 fillet
+            ;; arcs' shared centre = the arc-radius pivot) is NOT the router's
+            ;; "fitting centre" -- that is the SHARP MITRE CORNER where the
+            ;; two rail-pairs' own centreline tangent LINES (not the arc
+            ;; pivot) actually cross: local (576,-576) ((887.4667+264.5333)/2
+            ;; = 576 is the tray centreline radius; the tangent line for the
+            ;; "North" arm is x=576, for the "West" arm is y=-576, crossing at
+            ;; (576,-576)). BASE_OFFSET = -(that point) = (-576,576) (see
+            ;; ctr-plan-node's insert_pt formula). TAKEOFF=576 = distance from
+            ;; that corner to the tray centreline tangent point on EITHER arm
+            ;; (they're equal here) -- an ordinary flat-cut GENERATED_LADDER
+            ;; join, no per-rail termination needed; earlier belief that the
+            ;; two rails tangent at different stations (264.53/887.47) was a
+            ;; coordinate mix-up: those are radii from the ARC PIVOT, not
+            ;; longitudinal takeoffs from the actual corner. Native block
+            ;; orientation is West+North (by tangent/travel direction, not by
+            ;; which quadrant the arc pivot's radius points into) so
+            ;; ROTATION_OFFSET=270 (not 90) is needed to bring it to the
+            ;; router's East+North reference at rotation 0.
+            ;; 2026-09-30 CORRECTION (read-only diagnostics + engine + Human GUI PASS @ 300 mm):
+            ;; the block file in new/ has its arc pivot at (-686.7333,521), NOT (0,0,0); the two
+            ;; opening axes cross at (-110.7333,-55) => BASE_OFFSET=(110.7333,55.0). The arm openings
+            ;; lie 644.2667 from that joint (576 tangent radius + 68.2667 stub) => TAKEOFF=644.2667.
+            ;; Earlier values (-576,576) / 576 assumed the pivot at the origin and the tangent point.
+            (list (cons "TYPE" "ELBOW") (cons "BLOCK" "SCADA_TRAY_ELBOW_V2") (cons "WIDTH" nil)
+                  (cons "BLOCK_WIDTH" 622.9333) (cons "TAKEOFF" 644.2667) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" 270.0) (cons "BASE_OFFSET" (list 110.7333 55.0)))
+            ;; CONFIRMED by real accoreconsole engine: raw dump (insert at
+            ;; origin, explode) identified 3 openings via their unambiguous
+            ;; 2-vertex LWPOLYLINE rail-end caps -- Main-RIGHT local
+            ;; (430.6667,170.0), Main-LEFT (-430.6667,170.0), Branch
+            ;; (0,600.6667) (each = avg of that opening's 2 rail centres).
+            ;; Main centreline y=170.0 (exact, both main openings share it);
+            ;; Branch centreline x=0 (exact). Junction J=(0,170.0) -- NOT the
+            ;; block origin. BASE_OFFSET=-J=(0,-170.0) (same derivation
+            ;; pattern as ELBOW_V2, independent of rotation). MAIN_TAKEOFF and
+            ;; BRANCH_TAKEOFF measured SEPARATELY from J to each opening and
+            ;; found equal (430.6667) for this block -- not assumed. Native
+            ;; orientation (by arm travel direction) is already Main E-W /
+            ;; Branch North, matching the router's own reference, so
+            ;; ROTATION_OFFSET=0 (confirmed via ctr-tee-rotation/ctr-dir-angle,
+            ;; not from the drawing looking right). Verified on all 4 legal
+            ;; TEE orientations (branch N/W/S/E), 6 rail joints each, full 2D
+            ;; point-to-named-entity comparison, MAXDIST 0.00015mm (float
+            ;; noise) -- see block_spec_measured.md.
+            (list (cons "TYPE" "TEE") (cons "BLOCK" "SCADA_TRAY_TEE_V2") (cons "WIDTH" nil)
+                  (cons "BLOCK_WIDTH" 317.3333) (cons "TAKEOFF" 430.6667) (cons "BRANCH_TAKEOFF" 430.6667)
+                  (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 -170.0)))
+            (list (cons "TYPE" "CROSS") (cons "BLOCK" "SCADA_TRAY_CROSS_V2") (cons "WIDTH" nil)
+                  (cons "BLOCK_WIDTH" 317.3333333) (cons "TAKEOFF" 430.6666667) (cons "BRANCH_TAKEOFF" nil)
+                  (cons "ROTATION_OFFSET" 0.0) (cons "BASE_OFFSET" (list 0.0 -170.0)))
           ))))))
 
 (if (not (boundp (quote *CTR-CURRENT-PROFILE*)))
@@ -621,6 +707,7 @@ Temporary test value: scale = 1."))
   (cond ((= (rem (+ d1 1) 4) d2) d1)
         ((= (rem (+ d2 1) 4) d1) d2)
         (T nil)))
+
 ;; TEE reference: main E-W, branch North(1)
 (defun ctr-tee-rotation (branch) (rem (+ branch 3) 4))
 ;; CROSS: symmetric
@@ -1440,6 +1527,28 @@ Specify next point or <Enter to finish>: "))
             (princ line))))))
   (princ))
 
+;; CTVER: which Router is REALLY loaded?  Identity comes from a loader / generated
+;; router_version.lsp (*CTR-ROUTER-...*); a core loaded without them says so explicitly.
+(defun ctr-ver-val (sym fallback)
+  (if (and (boundp sym) (eval sym)) (eval sym) fallback))
+(defun ctr-ver-print ()
+  (princ (strcat (chr 10) "Cable Tray Router"))
+  (princ (strcat (chr 10) "Version : " (ctr-ver-val (quote *CTR-ROUTER-VERSION*) "UNSTAMPED (core loaded without a loader)")))
+  (princ (strcat (chr 10) "Profile : " *CTR-CURRENT-PROFILE*
+                 "  (loader default: " (ctr-ver-val (quote *CTR-ROUTER-DEFAULT-PROFILE*) "n/a") ")"))
+  (princ (strcat (chr 10) "Commit  : " (ctr-ver-val (quote *CTR-ROUTER-COMMIT*) "UNKNOWN")
+                 "  (core file last changed in " (ctr-ver-val (quote *CTR-ROUTER-CORE-COMMIT*) "UNKNOWN") ")"))
+  (princ (strcat (chr 10) "Branch  : " (ctr-ver-val (quote *CTR-ROUTER-BRANCH*) "UNKNOWN")))
+  (princ (strcat (chr 10) "Source  : " (ctr-ver-val (quote *CTR-ROUTER-SOURCE*) "UNKNOWN (not loaded through a loader)")))
+  (princ (strcat (chr 10) "Width   : " (rtos *CTR-CURRENT-WIDTH* 2 0)))
+  (princ (strcat (chr 10) "Core    : " *CTR-VERSION* "  " *CTR-SOURCE-ID*))
+  (princ))
+
+;; CTVER: show the identity, then offer profile / width right away (Enter keeps the current values).
+(defun c:CTVER ()
+  (ctr-ver-print)
+  (c:CTSET))
+
 (princ (strcat "\ncable_tray_router " *CTR-VERSION*
-               " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD  (advanced: CTRAY, CTRAYUPDATE)"))
+               " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD, CTVER  (advanced: CTRAY, CTRAYUPDATE)"))
 (princ)
