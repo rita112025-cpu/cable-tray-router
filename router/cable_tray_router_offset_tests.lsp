@@ -10,7 +10,19 @@
   (foreach l lines (if (= l text) (setq hit T)))
   hit)
 
-(defun ctr-run-offset-tests (/ r f fa lines)
+(defun t-off-has-sub (lines sub / hit l n i)
+  (setq n (strlen sub))
+  (foreach l lines
+    (setq i 1)
+    (while (and (<= (+ i n -1) (strlen l)) (/= sub (substr l i n))) (setq i (1+ i)))
+    (if (<= (+ i n -1) (strlen l)) (setq hit T)))
+  hit)
+(defun t-off-mk (z1 z2 ang ref rtype h st tc)
+  (ctr-offset-attach (ctr-offset-from-angle z1 z2 ang) ref rtype h st tc))
+(defun t-off-st (res id) (ctr-offset-check-status (ctr-offset-checks res) id))
+(defun t-off-chk-lines (res id) (cdr (assoc "LINES" (ctr-offset-find-check (ctr-offset-checks res) id))))
+
+(defun ctr-run-offset-tests (/ r f fa lines e)
   (princ "\n-- CTOFFSET (vertical offset engine) --")
 
   ;; Case 1: DOWN, angle 30
@@ -106,12 +118,148 @@
                                               (= "-600.00" (ctr-offset-fmt -600.0)) (= "0.05" (ctr-offset-fmt 0.05))))
   (t-check "X3 raw value not rounded" (> (abs (- (cdr (assoc "HORIZONTAL_RUN" r)) 1039.23)) 0.0004))
   (setq lines (ctr-offset-annotation r "SCADA TRAY 300W"))
-  (t-check "X4 annotation text"
-    (and (= (nth 0 lines) "SCADA TRAY 300W") (= (nth 1 lines) "EL.+3300 -> EL.+2700")
-         (= (nth 2 lines) "DOWN 600 / 30 deg") (= (nth 3 lines) "RUN=1039 / SLOPE=1200")))
+  (t-check "X4 annotation without elevation model: centre line is NOT printed as tray EL"
+    (and (= (nth 0 lines) "SCADA TRAY 300W") (= (nth 1 lines) "B.EL NOT SET") (= (nth 2 lines) "T.EL NOT SET")
+         (= (nth 3 lines) "DOWN 600 / 30 deg") (= (nth 4 lines) "RUN=1039 / SLOPE=1200") (= (length lines) 5)))
   (t-check "X5 FITTING reserved but not the active mode"
     (and (member "FITTING" *CTR-OFFSET-MODES*) (= "GEOMETRIC" *CTR-OFFSET-MODE*)))
   (t-check "X6 steep 89.9 deg stays finite" (< (cdr (assoc "HORIZONTAL_RUN" (ctr-offset-from-angle 0.0 600.0 89.9))) 2.0))
+
+  ;; ---- Elevation model: CENTER / BOTTOM / TOP (geometry stays separate) ----
+  (princ "\n-- CTOFFSET elevation model + owner warnings --")
+  (setq e (ctr-offset-elevations 3000.0 "CENTER" 150.0))
+  (t-check "E1 CENTER Z=3000 h=150: bottom 2925 / center 3000 / top 3075"
+    (and (t-off-near e "BOTTOM_EL" 2925.0 1e-9) (t-off-near e "CENTER_EL" 3000.0 1e-9) (t-off-near e "TOP_EL" 3075.0 1e-9)))
+  (setq e (ctr-offset-elevations 3000.0 "BOTTOM" 150.0))
+  (t-check "E2 BOTTOM Z=3000 h=150: bottom 3000 / center 3075 / top 3150"
+    (and (t-off-near e "BOTTOM_EL" 3000.0 1e-9) (t-off-near e "CENTER_EL" 3075.0 1e-9) (t-off-near e "TOP_EL" 3150.0 1e-9)))
+  (setq e (ctr-offset-elevations 3000.0 "TOP" 150.0))
+  (t-check "E3 TOP Z=3000 h=150: top 3000 / center 2925 / bottom 2850"
+    (and (t-off-near e "TOP_EL" 3000.0 1e-9) (t-off-near e "CENTER_EL" 2925.0 1e-9) (t-off-near e "BOTTOM_EL" 2850.0 1e-9)))
+  (t-check "E4 invalid reference / height / z rejected"
+    (and (null (ctr-offset-elevations 3000.0 "MIDDLE" 150.0)) (null (ctr-offset-elevations 3000.0 "CENTER" 0.0))
+         (null (ctr-offset-elevations 3000.0 "CENTER" -5.0)) (null (ctr-offset-elevations 3000.0 nil 150.0))
+         (null (ctr-offset-elevations nil "CENTER" 150.0)) (null (ctr-offset-elevations 3000.0 "CENTER" nil))))
+  (t-check "E4b integer inputs accepted" (t-off-near (ctr-offset-elevations 3000 "CENTER" 150) "BOTTOM_EL" 2925.0 1e-9))
+  ;; stored internally as numbers, not only formatted strings
+  (setq r (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 "SCADA" nil))
+  (t-check "E5 all six START/END centre/bottom/top values stored as numbers"
+    (and (t-off-near r "START_CENTER_EL" 3300.0 1e-9) (t-off-near r "START_BOTTOM_EL" 3225.0 1e-9) (t-off-near r "START_TOP_EL" 3375.0 1e-9)
+         (t-off-near r "END_CENTER_EL" 2700.0 1e-9) (t-off-near r "END_BOTTOM_EL" 2625.0 1e-9) (t-off-near r "END_TOP_EL" 2775.0 1e-9)))
+  (t-check "E5b reference / type / height / system stored"
+    (and (= "CENTER" (cdr (assoc "ELEVATION_REFERENCE" r))) (= "FLOOR_RELATIVE" (cdr (assoc "REFERENCE_TYPE" r)))
+         (t-off-near r "TRAY_HEIGHT" 150.0 1e-9) (= "SCADA" (cdr (assoc "SYSTEM_TYPE" r)))))
+  (t-check "E6 geometry unchanged by the elevation model (START_Z/END_Z/DELTA/RUN/SLOPE)"
+    (and (t-off-near r "START_Z" 3300.0 1e-9) (t-off-near r "END_Z" 2700.0 1e-9) (t-off-near r "DELTA_Z" -600.0 1e-9)
+         (t-off-near r "HORIZONTAL_RUN" 1039.2305 0.0001) (t-off-near r "SLOPE_LENGTH" 1200.0 1e-6)))
+  (t-check "E7 attach rejects bad reference type / reference / height / system type / clearance"
+    (and (null (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FOO" 150.0 nil nil))
+         (null (t-off-mk 3300.0 2700.0 30.0 "MIDDLE" "ABSOLUTE" 150.0 nil nil))
+         (null (t-off-mk 3300.0 2700.0 30.0 "CENTER" "ABSOLUTE" 0.0 nil nil))
+         (null (t-off-mk 3300.0 2700.0 30.0 "CENTER" "ABSOLUTE" 150.0 "GAS" nil))
+         (null (t-off-mk 3300.0 2700.0 30.0 "CENTER" "ABSOLUTE" 150.0 nil "x"))
+         (null (ctr-offset-attach nil "CENTER" "ABSOLUTE" 150.0 nil nil))))
+  (setq lines (ctr-offset-format-elevation r))
+  (t-check "E8 elevation report lines"
+    (and (t-off-has-line lines "Elev Reference  : CENTER") (t-off-has-line lines "Reference Type  : FLOOR_RELATIVE")
+         (t-off-has-line lines "Tray Height     : 150.00 mm")
+         (t-off-has-line lines "Start B/C/T EL  : 3225.00 / 3300.00 / 3375.00 mm")
+         (t-off-has-line lines "End B/C/T EL    : 2625.00 / 2700.00 / 2775.00 mm")))
+  (t-check "E8b no elevation report without a model" (null (ctr-offset-format-elevation (ctr-offset-from-angle 3300.0 2700.0 30.0))))
+
+  ;; ---- annotation: bottom + top, no invented datum ----
+  (setq lines (ctr-offset-annotation r "SCADA TRAY 300W"))
+  (t-check "A1 annotation CENTER 3300->2700 h150: B.EL/T.EL two-point, REF type, no +-0.00"
+    (and (= (nth 0 lines) "SCADA TRAY 300W") (= (nth 1 lines) "B.EL +3225 -> +2625") (= (nth 2 lines) "T.EL +3375 -> +2775")
+         (= (nth 3 lines) "DOWN 600 / 30 deg") (= (nth 4 lines) "RUN=1039 / SLOPE=1200") (= (nth 5 lines) "REF=FLOOR_RELATIVE")
+         (not (t-off-has-sub lines "0.00")) (not (t-off-has-sub lines "3300"))))
+  (setq lines (ctr-offset-annotation (t-off-mk 3300.0 2700.0 30.0 "BOTTOM" "FLOOR_RELATIVE" 150.0 nil nil) "SCADA TRAY 300W"))
+  (t-check "A2 annotation BOTTOM 3300->2700: B.EL +3300 -> +2700 / T.EL +3450 -> +2850"
+    (and (= (nth 1 lines) "B.EL +3300 -> +2700") (= (nth 2 lines) "T.EL +3450 -> +2850")))
+  (setq lines (ctr-offset-annotation (t-off-mk 3300.0 3300.0 30.0 "BOTTOM" "ABSOLUTE" 150.0 nil nil) "T"))
+  (t-check "A3 LEVEL annotation: single B.EL/T.EL, ABSOLUTE ref"
+    (and (= (nth 1 lines) "B.EL +3300") (= (nth 2 lines) "T.EL +3450") (= (nth 3 lines) "LEVEL") (= (nth 5 lines) "REF=ABSOLUTE")))
+
+  ;; ---- bottom height (BOTTOM_EL, FLOOR_RELATIVE only) ----
+  (t-check "B1 FLOOR_RELATIVE bottom 2499 -> WARNING"
+    (= "WARNING" (t-off-st (t-off-mk 2499.0 2499.0 30.0 "BOTTOM" "FLOOR_RELATIVE" 150.0 nil nil) "BOTTOM_HEIGHT")))
+  (t-check "B2 FLOOR_RELATIVE bottom 2500 -> no below-height warning (PASS)"
+    (= "PASS" (t-off-st (t-off-mk 2500.0 2500.0 30.0 "BOTTOM" "FLOOR_RELATIVE" 150.0 nil nil) "BOTTOM_HEIGHT")))
+  (t-check "B3 judged on BOTTOM not CENTER: centre 2574 (>=2500) but bottom 2499 -> WARNING"
+    (= "WARNING" (t-off-st (t-off-mk 2574.0 2574.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil nil) "BOTTOM_HEIGHT")))
+  (t-check "B3b centre 2575 -> bottom 2500 -> PASS"
+    (= "PASS" (t-off-st (t-off-mk 2575.0 2575.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil nil) "BOTTOM_HEIGHT")))
+  (t-check "B3c TOP reference: top 2649 / bottom 2499 -> WARNING"
+    (= "WARNING" (t-off-st (t-off-mk 2649.0 2649.0 30.0 "TOP" "FLOOR_RELATIVE" 150.0 nil nil) "BOTTOM_HEIGHT")))
+  (setq r (t-off-mk 2000.0 2000.0 30.0 "BOTTOM" "ABSOLUTE" 150.0 nil nil))
+  (t-check "B4 ABSOLUTE bottom 2000: NOT CHECKED, floor level never assumed"
+    (and (= "NOT CHECKED" (t-off-st r "BOTTOM_HEIGHT")) (not (= "WARNING" (t-off-st r "BOTTOM_HEIGHT")))
+         (t-off-has-sub (t-off-chk-lines r "BOTTOM_HEIGHT") "not FLOOR_RELATIVE")))
+  (t-check "B5 offset: either end below 2500 warns (start 3000 ok, end bottom 2400)"
+    (= "WARNING" (t-off-st (t-off-mk 3000.0 2400.0 30.0 "BOTTOM" "FLOOR_RELATIVE" 150.0 nil nil) "BOTTOM_HEIGHT")))
+  (t-check "B6 bottom check without an elevation model: NOT CHECKED"
+    (= "NOT CHECKED" (t-off-st (ctr-offset-from-angle 3000.0 2400.0 30.0) "BOTTOM_HEIGHT")))
+
+  ;; ---- offset angle (warning only; interpretation of the owner term is pending) ----
+  (t-check "G1 SCADA 60 deg -> no exceed warning" (= "PASS" (t-off-st (t-off-mk 3300.0 2700.0 60.0 "CENTER" "FLOOR_RELATIVE" 150.0 "SCADA" nil) "OFFSET_ANGLE")))
+  (setq r (t-off-mk 3300.0 2700.0 60.01 "CENTER" "FLOOR_RELATIVE" 150.0 "SCADA" nil))
+  (t-check "G2 SCADA 60.01 deg -> WARNING with source + Interpretation pending"
+    (and (= "WARNING" (t-off-st r "OFFSET_ANGLE"))
+         (t-off-has-sub (t-off-chk-lines r "OFFSET_ANGLE") "WARNING: Offset angle exceeds Appendix C weak-current guidance of 60 deg.")
+         (t-off-has-sub (t-off-chk-lines r "OFFSET_ANGLE") "Source: Appendix C")
+         (t-off-has-sub (t-off-chk-lines r "OFFSET_ANGLE") "Interpretation pending")))
+  (t-check "G3 LOW_CURRENT 60 ok / 60.01 warns (same limit as SCADA)"
+    (and (= "PASS" (t-off-st (t-off-mk 3300.0 2700.0 60.0 "CENTER" "FLOOR_RELATIVE" 150.0 "LOW_CURRENT" nil) "OFFSET_ANGLE"))
+         (= "WARNING" (t-off-st (t-off-mk 3300.0 2700.0 60.01 "CENTER" "FLOOR_RELATIVE" 150.0 "LOW_CURRENT" nil) "OFFSET_ANGLE"))))
+  (t-check "G4 POWER 45 deg -> no exceed warning" (= "PASS" (t-off-st (t-off-mk 3300.0 2700.0 45.0 "CENTER" "FLOOR_RELATIVE" 150.0 "POWER" nil) "OFFSET_ANGLE")))
+  (setq r (t-off-mk 3300.0 2700.0 45.01 "CENTER" "FLOOR_RELATIVE" 150.0 "POWER" nil))
+  (t-check "G5 POWER 45.01 deg -> WARNING, power-cable + Interpretation pending"
+    (and (= "WARNING" (t-off-st r "OFFSET_ANGLE"))
+         (t-off-has-sub (t-off-chk-lines r "OFFSET_ANGLE") "WARNING: Offset angle exceeds Appendix C power-cable guidance of 45 deg.")
+         (t-off-has-sub (t-off-chk-lines r "OFFSET_ANGLE") "Interpretation pending")))
+  (t-check "G6 POWER 50 deg warns but SCADA 50 deg does not (per system type)"
+    (and (= "WARNING" (t-off-st (t-off-mk 3300.0 2700.0 50.0 "CENTER" "FLOOR_RELATIVE" 150.0 "POWER" nil) "OFFSET_ANGLE"))
+         (= "PASS" (t-off-st (t-off-mk 3300.0 2700.0 50.0 "CENTER" "FLOOR_RELATIVE" 150.0 "SCADA" nil) "OFFSET_ANGLE"))))
+  (t-check "G7 no system type -> NOT CHECKED; LEVEL -> N/A"
+    (and (= "NOT CHECKED" (t-off-st (t-off-mk 3300.0 2700.0 80.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil nil) "OFFSET_ANGLE"))
+         (= "N/A" (t-off-st (t-off-mk 3000.0 3000.0 80.0 "CENTER" "FLOOR_RELATIVE" 150.0 "POWER" nil) "OFFSET_ANGLE"))))
+  (t-check "G8 warning never changes geometry or blocks the result (angle 80 still computed)"
+    (t-off-near (t-off-mk 3300.0 2700.0 80.0 "CENTER" "FLOOR_RELATIVE" 150.0 "POWER" nil) "ANGLE_DEG" 80.0 1e-9))
+
+  ;; ---- top clearance (user-supplied only; slab level never guessed) ----
+  (t-check "H1 top clearance 300 -> PASS" (= "PASS" (t-off-st (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil 300.0) "TOP_CLEARANCE")))
+  (setq r (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil 299.0))
+  (t-check "H2 top clearance 299 -> WARNING difficult condition"
+    (and (= "WARNING" (t-off-st r "TOP_CLEARANCE")) (t-off-has-sub (t-off-chk-lines r "TOP_CLEARANCE") "difficult-condition")))
+  (setq r (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil 150.0))
+  (t-check "H3 top clearance 150 -> WARNING difficult condition (not below minimum)"
+    (and (= "WARNING" (t-off-st r "TOP_CLEARANCE")) (t-off-has-sub (t-off-chk-lines r "TOP_CLEARANCE") "difficult-condition")
+         (not (t-off-has-sub (t-off-chk-lines r "TOP_CLEARANCE") "below the Appendix C minimum"))))
+  (setq r (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil 149.0))
+  (t-check "H4 top clearance 149 -> WARNING below minimum"
+    (and (= "WARNING" (t-off-st r "TOP_CLEARANCE")) (t-off-has-sub (t-off-chk-lines r "TOP_CLEARANCE") "below the Appendix C minimum of 150 mm")))
+  (t-check "H5 no TOP_CLEARANCE -> NOT CHECKED (nothing inferred)"
+    (= "NOT CHECKED" (t-off-st (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 nil nil) "TOP_CLEARANCE")))
+
+  ;; ---- cable bending radius: reported as unverified, never judged ----
+  (setq r (t-off-mk 3300.0 2700.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 "SCADA" nil))
+  (t-check "K1 offset present -> CABLE_BEND_RADIUS_CHECK NOT CHECKED + WARNING text"
+    (and (= "NOT CHECKED" (t-off-st r "CABLE_BEND_RADIUS_CHECK"))
+         (t-off-has-sub (t-off-chk-lines r "CABLE_BEND_RADIUS_CHECK") "WARNING: Cable minimum bending radius has not been verified.")))
+  (t-check "K2 LEVEL -> no cable-bend warning text"
+    (not (t-off-has-sub (t-off-chk-lines (t-off-mk 3000.0 3000.0 30.0 "CENTER" "FLOOR_RELATIVE" 150.0 "SCADA" nil) "CABLE_BEND_RADIUS_CHECK") "WARNING")))
+  (setq lines (ctr-offset-format-checks (ctr-offset-checks r)))
+  (t-check "K3 checks report lists all four checks"
+    (and (t-off-has-sub lines "OFFSET_ANGLE") (t-off-has-sub lines "BOTTOM_HEIGHT")
+         (t-off-has-sub lines "TOP_CLEARANCE") (t-off-has-sub lines "CABLE_BEND_RADIUS_CHECK")))
+
+  ;; ---- ELBOW 0.3 m inner bend radius: validation record only, geometry untouched ----
+  (t-check "R1 ELBOW inner radius record: owner min 300, candidate 264.5, mapping unconfirmed, status UNVERIFIED (not FAIL)"
+    (and (= "ELBOW_INNER_RADIUS_REQUIRES_VERIFICATION" (cdr (assoc "ID" *CTR-ELBOW-INNER-RADIUS-RECORD*)))
+         (t-near 300.0 (cdr (assoc "OWNER_MIN" *CTR-ELBOW-INNER-RADIUS-RECORD*)))
+         (t-near 264.5 (cdr (assoc "MEASURED_CANDIDATE" *CTR-ELBOW-INNER-RADIUS-RECORD*)))
+         (= "UNCONFIRMED" (cdr (assoc "BLOCK_WIDTH_MAPPING" *CTR-ELBOW-INNER-RADIUS-RECORD*)))
+         (= "UNVERIFIED" (cdr (assoc "STATUS" *CTR-ELBOW-INNER-RADIUS-RECORD*)))))
   (princ)
   *T-FAIL*)
 

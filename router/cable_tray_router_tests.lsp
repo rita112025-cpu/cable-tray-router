@@ -16,6 +16,12 @@
   ok)
 
 (defun t-near (a b) (< (abs (- a b)) 0.000001))
+(defun let-max-gap-ok (lst limit / prev x ok)
+  (setq ok T)
+  (foreach x lst
+    (if (and prev (> (- x prev) (+ limit 1e-9))) (setq ok nil))
+    (setq prev x))
+  ok)
 (defun t-pt-near (p q) (and (t-near (car p) (car q)) (t-near (cadr p) (cadr q))))
 (defun t-avail (n) T)
 (defun t-none (n) nil)
@@ -318,7 +324,8 @@ T17 per-width entries override proportional scaling")
   (t-check "600 with no entry -> no config" (null (ctr-get-fitting-config "ELBOW" 600.0)))
 
   (princ "
-T25 GENERATED_LADDER rung centres (pure geometry, no AutoCAD)")
+T25 GENERATED_LADDER rung centres (pure geometry, no AutoCAD; the 250 spacing in these
+  cases is the MEASURED real-block geometry kept as a historical fact -- NOT production config)")
   (t-check "length 1000: 4 rungs at 125/375/625/875"
     (equal (ctr-ladder-rung-centers 1000.0 125.0 250.0 40.0) '(125.0 375.0 625.0 875.0)))
   (t-check "length 2000: 8 rungs"
@@ -341,6 +348,38 @@ T25 GENERATED_LADDER rung centres (pure geometry, no AutoCAD)")
   (t-check "count is simply floor(length/spacing), independent of rung width"
     (equal (ctr-ladder-rung-centers 1150.0 125.0 250.0 40.0)
            (ctr-ladder-rung-centers 1150.0 125.0 250.0 10.0)))
+  (princ "
+T25b OWNER rung spacing (max 225 mm): production config vs measured block")
+  (t-check "owner max is 225" (t-near 225.0 *CTR-OWNER-RUNG-SPACING-MAX*))
+  (t-check "compliance: 225 passes" (ctr-rung-spacing-compliant-p 225.0))
+  (t-check "compliance: 200 passes" (ctr-rung-spacing-compliant-p 200.0))
+  (t-check "compliance: 250 FAILS" (not (ctr-rung-spacing-compliant-p 250.0)))
+  (t-check "compliance: 225.01 FAILS" (not (ctr-rung-spacing-compliant-p 225.01)))
+  (t-check "compliance: nil / 0 / negative rejected"
+    (and (not (ctr-rung-spacing-compliant-p nil)) (not (ctr-rung-spacing-compliant-p 0.0))
+         (not (ctr-rung-spacing-compliant-p -225.0))))
+  (t-check "SCADA_BASIC STRAIGHT_RUNG_SPACING <= 225"
+    (ctr-rung-spacing-compliant-p (cdr (assoc "STRAIGHT_RUNG_SPACING" (ctr-get-profile "SCADA_BASIC")))))
+  (t-check "SCADA_V2 STRAIGHT_RUNG_SPACING <= 225"
+    (ctr-rung-spacing-compliant-p (cdr (assoc "STRAIGHT_RUNG_SPACING" (ctr-get-profile "SCADA_V2")))))
+  (t-check "production spacing is 225 (preferred), not the measured 250"
+    (and (t-near 225.0 (cdr (assoc "STRAIGHT_RUNG_SPACING" (ctr-get-profile "SCADA_BASIC"))))
+         (t-near 225.0 (cdr (assoc "STRAIGHT_RUNG_SPACING" (ctr-get-profile "SCADA_V2"))))))
+  (t-check "measured block geometry is RECORDED as 250 and NON-COMPLIANT (history kept)"
+    (and (t-near 250.0 (cdr (assoc "MEASURED_BLOCK_GEOMETRY" *CTR-RUNG-SPACING-RECORD*)))
+         (= "NON-COMPLIANT" (cdr (assoc "BLOCK_STATUS" *CTR-RUNG-SPACING-RECORD*)))
+         (not (ctr-rung-spacing-compliant-p (cdr (assoc "MEASURED_BLOCK_GEOMETRY" *CTR-RUNG-SPACING-RECORD*))))))
+  (t-check "225 spacing, length 1000: 4 rungs at 125/350/575/800"
+    (equal (ctr-ladder-rung-centers 1000.0 125.0 225.0 40.0) '(125.0 350.0 575.0 800.0)))
+  (t-check "225 spacing: centre-to-centre never exceeds 225 (length 3000)"
+    (let-max-gap-ok (ctr-ladder-rung-centers 3000.0 125.0 225.0 40.0) 225.0))
+  (t-check "225 spacing: no rung overhangs (lengths 1000/2000/3000)"
+    (and (ctr-none-overhang (ctr-ladder-rung-centers 1000.0 125.0 225.0 40.0) 1000.0 40.0)
+         (ctr-none-overhang (ctr-ladder-rung-centers 2000.0 125.0 225.0 40.0) 2000.0 40.0)
+         (ctr-none-overhang (ctr-ladder-rung-centers 3000.0 125.0 225.0 40.0) 3000.0 40.0)))
+  (t-check "225 spacing: 5th rung appears at length 1125 (floor(1125/225)=5), not before"
+    (and (= 4 (length (ctr-ladder-rung-centers 1124.9 125.0 225.0 40.0)))
+         (= 5 (length (ctr-ladder-rung-centers 1125.0 125.0 225.0 40.0)))))
   (t-check "oriented rect: horizontal segment, width 750, rail offset -> outer envelope +-375"
     (equal (ctr-oriented-rect '(0.0 0.0) 1.0 0.0 0.0 1.0 500.0 365.0)
            (list '(-500.0 365.0) '(500.0 365.0) '(500.0 -365.0) '(-500.0 -365.0))))

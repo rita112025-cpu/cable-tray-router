@@ -90,3 +90,28 @@ now confirmed against real GUI behaviour, not just the DXF authoring graph.
   `(vlax-get-acad-object)` succeeded on their own. Doesn't change the
   architecture decision (Router was never meant to depend on COM), but the
   claim itself should be "unable to verify", not "confirmed absent".
+
+## Owner requirement vs measured block: rung spacing (added 2026-10-03; history above is NOT rewritten)
+
+| Item | Value | Status |
+|---|---|---|
+| MEASURED BLOCK GEOMETRY | 250 mm rung centre-to-centre (BLOCKARRAYACTION group 141; GUI-confirmed 2026-09-27, 4 rungs at length 1000/1100/1150) | historical fact, still true of the real Dynamic Block |
+| OWNER REQUIREMENT MAX | 225 mm (Owner Requirements (2) / RFP volume 3, clause 1.15.2(1)A.c: rung centre-to-centre maximum 225 mm; the SCADA submittal repeats 225 mm) | governing value |
+| STATUS | NON-COMPLIANT (the real block's 250 mm exceeds the 225 mm maximum) | needs a block update |
+
+What the router does now:
+
+- `STRAIGHT_RUNG_SPACING` is **225** in both GENERATED_LADDER profiles (SCADA_BASIC and SCADA_V2). 250 is no longer a production default.
+- The rung COUNT rule is unchanged: `floor(length / spacing)`, never overhanging the segment. It was observed on the real block at 250 mm; the same rule is applied at 225 mm. At 225 mm a 5th rung appears at length 1125 (was 1250).
+- `STRAIGHT_RUNG_FIRST_OFFSET` stays at the measured 125 mm (the owner limit covers centre-to-centre spacing, not the end offset).
+- `*CTR-RUNG-SPACING-RECORD*` keeps the measured 250 and the owner maximum side by side; `ctr-rung-spacing-compliant-p` is the compliance test (225 passes, 250 fails).
+
+Known unresolved:
+
+- The Dynamic Block `SCADA_TRAY_STRAIGHT` / `_V2` (and the "750 tray" source) still has 250 mm spacing; its BLOCKARRAYACTION array must be updated in the AutoCAD GUI. Until then a generated ladder (225) and a manually inserted block (250) differ.
+- The GUI observation above (count at lengths 1100/1150 = 4) was made at 250 mm and is not a statement about 225 mm.
+
+## ELBOW inner bend radius (validation record, not a failure)
+
+Owner (Appendix C): cable tray inner bend radius should not be below 300 mm.
+`ELBOW_INNER_RADIUS_REQUIRES_VERIFICATION`: owner minimum 300 mm; measured candidate 264.5 mm (ELBOW_V2, hand-measured inner arc radius); block / tray-width mapping UNCONFIRMED. ELBOW geometry was deliberately NOT changed and nothing is judged FAIL until the block and width are identified. Machine-readable copy: `*CTR-ELBOW-INNER-RADIUS-RECORD*`.

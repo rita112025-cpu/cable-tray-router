@@ -55,6 +55,25 @@
 (setq *CTR-APP-PATH*      "CTR_PATH")  ; XDATA app on path (holds width)
 (setq *CTR-DEFAULT-WIDTH* 300.0)       ; NEEDS_USER_CONFIRMATION: width options
 (setq *CTR-TOL*           0.001)       ; coordinate tolerance (drawing units)
+
+;; Owner requirement limits.  Sources (Owner Requirements): volume 3 clause 1.15.2(1)A.c
+;; (rung spacing) and Appendix C (angles, heights, clearances, bend radius).  These are
+;; OWNER values and take precedence over any measured Dynamic Block geometry.
+(setq *CTR-OWNER-RUNG-SPACING-MAX*            225.0)  ; ladder tray rung centre-to-centre, MAX
+(setq *CTR-OWNER-ANGLE-MAX-POWER*              45.0)  ; deg, "yu-jiao" definition pending
+(setq *CTR-OWNER-ANGLE-MAX-LOW-CURRENT*        60.0)  ; deg, "yu-jiao" definition pending
+(setq *CTR-OWNER-MIN-BOTTOM-HEIGHT*          2500.0)  ; horizontal tray bottom above floor
+(setq *CTR-OWNER-TOP-CLEARANCE-NORMAL*        300.0)
+(setq *CTR-OWNER-TOP-CLEARANCE-DIFFICULT*     150.0)
+(setq *CTR-OWNER-ELBOW-INNER-RADIUS-MIN*      300.0)  ; mm; see *CTR-ELBOW-INNER-RADIUS-RECORD*
+;; Historical fact, NOT a compliance basis: the real Dynamic Block "750 tray" measures 250 mm
+;; rung spacing (BLOCKARRAYACTION group 141, GUI-confirmed 2026-09-27) -> NON-COMPLIANT.
+(setq *CTR-RUNG-SPACING-RECORD*
+  (list (cons "MEASURED_BLOCK_GEOMETRY" 250.0)
+        (cons "OWNER_REQUIREMENT_MAX" *CTR-OWNER-RUNG-SPACING-MAX*)
+        (cons "BLOCK_STATUS" "NON-COMPLIANT")))
+(defun ctr-rung-spacing-compliant-p (sp)
+  (and (numberp sp) (> sp 0.0) (<= sp *CTR-OWNER-RUNG-SPACING-MAX*)))
 (setq *CTR-ANGTOL*        0.0001)      ; angle tolerance (radians)
 (if (not (boundp (quote *CTR-DEBUG*))) (setq *CTR-DEBUG* nil))  ; OFF by default; C:CTDEBUG toggles, survives reload
 
@@ -165,7 +184,12 @@
         (cons "STRAIGHT_BLOCK" "SCADA_TRAY_STRAIGHT")     ; kept for GUI/manual use, unused by the router
         (cons "STRAIGHT_RAIL_THICKNESS" 20.0)              ; confirmed (rail LWPOLYLINE: 110-90=20)
         (cons "STRAIGHT_RUNG_WIDTH" 40.0)                  ; confirmed (rung LWPOLYLINE: 145-105=40)
-        (cons "STRAIGHT_RUNG_SPACING" 250.0)                ; confirmed (BLOCKARRAYACTION group 141)
+        ;; OWNER REQUIREMENT (RFP volume 3 = Owner Requirements (2), clause 1.15.2(1)A.c): rung centre-to-centre
+        ;; spacing MAX 225 mm.  MEASURED Dynamic Block geometry is 250 (BLOCKARRAYACTION
+        ;; group 141, 2026-09-27 GUI check, see block_spec_measured.md) = NON-COMPLIANT.
+        ;; The router renders the owner value; the 250 mm block itself still needs a
+        ;; separate geometry update.  Do not set this back to the measured 250.
+        (cons "STRAIGHT_RUNG_SPACING" 225.0)
         (cons "STRAIGHT_RUNG_FIRST_OFFSET" 125.0)          ; confirmed (authoring sample + GUI stretch test @ length 1000)
         ;; NEEDS_USER_CONFIRMATION: what happens at the FAR end of a segment --
         ;; does the real dynamic block drop a rung that would overhang past the
@@ -234,7 +258,7 @@
         (cons "STRAIGHT_BLOCK" "SCADA_TRAY_STRAIGHT_V2")
         (cons "STRAIGHT_RAIL_THICKNESS" 20.0)
         (cons "STRAIGHT_RUNG_WIDTH" 40.0)
-        (cons "STRAIGHT_RUNG_SPACING" 250.0)
+        (cons "STRAIGHT_RUNG_SPACING" 225.0)                ; owner max 225 (V2 straight block also measures 250: non-compliant, see SCADA_BASIC note)
         (cons "STRAIGHT_RUNG_FIRST_OFFSET" 125.0)
         (cons "STRAIGHT_SUPPORTED_WIDTHS" (list 150.0 300.0 450.0 600.0 750.0))
         (cons "FITTINGS"
@@ -1119,6 +1143,10 @@ profile=" profile
 ;; parameter (still used to size each rung's geometry) but no longer affects
 ;; the count.  A small epsilon avoids float round-off flipping an exact
 ;; multiple of SPACING down by one.
+;; NOTE: the count rule above was observed on the real block at its measured 250 mm
+;; spacing.  Production spacing is the owner value (<= 225, see *CTR-OWNER-RUNG-SPACING-MAX*);
+;; the same floor(length/spacing) rule is applied to it and the measured first-rung
+;; offset (125) is unchanged.  The owner maximum applies to centre-to-centre spacing.
 (defun ctr-ladder-rung-centers (length first spacing rw / n k out)
   (setq n (fix (/ (+ length 0.0001) spacing)))
   (setq k 0)
@@ -1656,19 +1684,200 @@ Specify next point or <Enter to finish>: "))
     (setq lines (append lines (list (strcat (ctr-offset-fmt1 (car a)) " deg   " (if (caddr a) "OK" "NG"))))))
   lines)
 
+;;; ---- Owner-requirement metadata (Appendix C) ----------------------------
+;;; Geometry (above) and owner-compliance judgement (below) are kept apart.
+;;; ctr-offset-from-* = pure geometry.  ctr-offset-attach adds the elevation
+;;; model.  ctr-offset-checks only REPORTS (PASS / WARNING / NOT CHECKED / N/A);
+;;; it never blocks drawing and never changes a geometry value.
+(setq *CTR-OFFSET-REFERENCES*   '("CENTER" "BOTTOM" "TOP"))
+(setq *CTR-OFFSET-REF-TYPES*    '("FLOOR_RELATIVE" "ABSOLUTE"))   ; stored + shown only; NO datum conversion
+(setq *CTR-OFFSET-SYSTEM-TYPES* '("POWER" "LOW_CURRENT" "SCADA")) ; SCADA is handled as LOW_CURRENT
+(setq *CTR-OFFSET-DEFAULT-TRAY-HEIGHT* 150.0)   ; SCADA submittal ch11: max outer depth 150 mm; always user-editable
+(if (not (boundp (quote *CTR-OFFSET-LAST-REF*)))     (setq *CTR-OFFSET-LAST-REF*     "CENTER"))
+(if (not (boundp (quote *CTR-OFFSET-LAST-REFTYPE*))) (setq *CTR-OFFSET-LAST-REFTYPE* "FLOOR_RELATIVE"))
+(if (not (boundp (quote *CTR-OFFSET-LAST-HEIGHT*)))  (setq *CTR-OFFSET-LAST-HEIGHT*  *CTR-OFFSET-DEFAULT-TRAY-HEIGHT*))
+(if (not (boundp (quote *CTR-OFFSET-LAST-SYSTEM*)))  (setq *CTR-OFFSET-LAST-SYSTEM*  "SCADA"))
+
+;; Z at ELEVATION_REFERENCE -> centre / bottom / top elevations (alist) or nil when
+;; z / reference / height is invalid.  Computed directly per reference (no
+;; add-then-subtract) so BOTTOM stays exactly Z and the 2500 boundary is exact.
+(defun ctr-offset-elevations (z ref height / half)
+  (if (and (numberp z) (member ref *CTR-OFFSET-REFERENCES*) (numberp height) (> height 0.0))
+    (progn
+      (setq z (float z) height (float height) half (/ height 2.0))
+      (cond
+        ((= ref "CENTER") (list (cons "CENTER_EL" z)          (cons "BOTTOM_EL" (- z half)) (cons "TOP_EL" (+ z half))))
+        ((= ref "BOTTOM") (list (cons "CENTER_EL" (+ z half)) (cons "BOTTOM_EL" z)          (cons "TOP_EL" (+ z height))))
+        (T                (list (cons "CENTER_EL" (- z half)) (cons "BOTTOM_EL" (- z height)) (cons "TOP_EL" z)))))
+    nil))
+
+;; Attach the elevation model + check inputs to a geometry result.  nil when the
+;; result or any input is invalid.  SYSTYPE and TOPCLR are optional (nil = not given).
+;; START_Z / END_Z stay what they were: the geometric Z at ELEVATION_REFERENCE.
+(defun ctr-offset-attach (res ref rtype height systype topclr / se ee)
+  (if (and res (member ref *CTR-OFFSET-REFERENCES*) (member rtype *CTR-OFFSET-REF-TYPES*)
+           (or (null systype) (member systype *CTR-OFFSET-SYSTEM-TYPES*))
+           (or (null topclr) (numberp topclr)))
+    (progn
+      (setq se (ctr-offset-elevations (cdr (assoc "START_Z" res)) ref height)
+            ee (ctr-offset-elevations (cdr (assoc "END_Z" res)) ref height))
+      (if (and se ee)
+        (append res
+          (list (cons "ELEVATION_REFERENCE" ref) (cons "REFERENCE_TYPE" rtype)
+                (cons "TRAY_HEIGHT" (float height))
+                (cons "SYSTEM_TYPE" systype) (cons "TOP_CLEARANCE" topclr)
+                (cons "START_CENTER_EL" (cdr (assoc "CENTER_EL" se)))
+                (cons "START_BOTTOM_EL" (cdr (assoc "BOTTOM_EL" se)))
+                (cons "START_TOP_EL"    (cdr (assoc "TOP_EL" se)))
+                (cons "END_CENTER_EL" (cdr (assoc "CENTER_EL" ee)))
+                (cons "END_BOTTOM_EL" (cdr (assoc "BOTTOM_EL" ee)))
+                (cons "END_TOP_EL"    (cdr (assoc "TOP_EL" ee)))))
+        nil))
+    nil))
+
+;; Pending-verification record (NOT a production FAIL).  Owner: cable-tray inner bend
+;; radius should not be below 300 mm (Appendix C).  264.5 is the hand-measured inner arc
+;; radius of the ELBOW_V2 candidate; which block / tray width it belongs to is unconfirmed,
+;; so ELBOW geometry is deliberately left untouched.
+(setq *CTR-ELBOW-INNER-RADIUS-RECORD*
+  (list (cons "ID" "ELBOW_INNER_RADIUS_REQUIRES_VERIFICATION")
+        (cons "OWNER_MIN" *CTR-OWNER-ELBOW-INNER-RADIUS-MIN*)
+        (cons "MEASURED_CANDIDATE" 264.5)
+        (cons "BLOCK_WIDTH_MAPPING" "UNCONFIRMED")
+        (cons "STATUS" "UNVERIFIED")))
+
+(defun ctr-offset-angle-limit (systype)
+  (cond ((= systype "POWER") *CTR-OWNER-ANGLE-MAX-POWER*)
+        ((or (= systype "LOW_CURRENT") (= systype "SCADA")) *CTR-OWNER-ANGLE-MAX-LOW-CURRENT*)
+        (T nil)))
+
+(defun ctr-offset-check (id status lines)
+  (list (cons "ID" id) (cons "STATUS" status) (cons "LINES" lines)))
+
+;; Appendix C: up/down bends of a power tray should not exceed a 45 deg "yu-jiao"
+;; (residual angle), weak-current 60 deg.  The meaning of "yu-jiao" is NOT confirmed to
+;; equal the CTOFFSET slope angle, so this is a WARNING only.
+(defun ctr-offset-check-angle (res / st ang lim)
+  (setq st (cdr (assoc "SYSTEM_TYPE" res)) ang (cdr (assoc "ANGLE_DEG" res)))
+  (setq lim (if st (ctr-offset-angle-limit st) nil))
+  (cond
+    ((= (cdr (assoc "DIRECTION" res)) "LEVEL")
+     (ctr-offset-check "OFFSET_ANGLE" "N/A" (list "No vertical offset.")))
+    ((null lim)
+     (ctr-offset-check "OFFSET_ANGLE" "NOT CHECKED" (list "Offset angle not checked: no valid SYSTEM_TYPE provided.")))
+    ((> ang lim)
+     (ctr-offset-check "OFFSET_ANGLE" "WARNING"
+       (list (strcat "WARNING: Offset angle exceeds Appendix C "
+                     (if (= st "POWER") "power-cable" "weak-current")
+                     " guidance of " (rtos lim 2 0) " deg.")
+             "Source: Appendix C - cable tray turning radius (original heading: guan-xian zhuan-wan ban-jing)."
+             "Interpretation pending: original text uses 'yu-jiao' (residual angle).")))
+    (T (ctr-offset-check "OFFSET_ANGLE" "PASS"
+         (list (strcat "Offset angle within Appendix C guidance of " (rtos lim 2 0)
+                       " deg (interpretation of 'yu-jiao' pending)."))))))
+
+;; Appendix C: horizontal tray should be >= 2500 mm above the floor -- judged on the
+;; BOTTOM elevation, only when the reference is the floor.  ABSOLUTE: floor level unknown.
+(defun ctr-offset-check-bottom (res / rt sb eb lines)
+  (setq rt (cdr (assoc "REFERENCE_TYPE" res))
+        sb (cdr (assoc "START_BOTTOM_EL" res)) eb (cdr (assoc "END_BOTTOM_EL" res)))
+  (cond
+    ((or (null sb) (null eb))
+     (ctr-offset-check "BOTTOM_HEIGHT" "NOT CHECKED" (list "Bottom height not checked: no elevation model.")))
+    ((not (= rt "FLOOR_RELATIVE"))
+     (ctr-offset-check "BOTTOM_HEIGHT" "NOT CHECKED"
+       (list "Bottom height not checked: REFERENCE_TYPE is not FLOOR_RELATIVE (floor level is not assumed).")))
+    (T
+     (if (< sb *CTR-OWNER-MIN-BOTTOM-HEIGHT*)
+       (setq lines (cons (strcat "WARNING: Start tray bottom EL " (ctr-offset-fmt sb)
+                                 " mm is below Appendix C guidance of 2500 mm above floor.") lines)))
+     (if (< eb *CTR-OWNER-MIN-BOTTOM-HEIGHT*)
+       (setq lines (cons (strcat "WARNING: End tray bottom EL " (ctr-offset-fmt eb)
+                                 " mm is below Appendix C guidance of 2500 mm above floor.") lines)))
+     (if lines
+       (ctr-offset-check "BOTTOM_HEIGHT" "WARNING" (reverse lines))
+       (ctr-offset-check "BOTTOM_HEIGHT" "PASS" (list "Tray bottom >= 2500 mm above floor."))))))
+
+;; Appendix C: clearance above the tray >= 300 mm, >= 150 mm in difficult conditions.
+;; The slab / obstacle level is never guessed: only a user-supplied TOP_CLEARANCE is judged.
+(defun ctr-offset-check-top (res / c)
+  (setq c (cdr (assoc "TOP_CLEARANCE" res)))
+  (cond
+    ((null c) (ctr-offset-check "TOP_CLEARANCE" "NOT CHECKED" (list "Top clearance not checked: no TOP_CLEARANCE provided.")))
+    ((>= c *CTR-OWNER-TOP-CLEARANCE-NORMAL*)
+     (ctr-offset-check "TOP_CLEARANCE" "PASS" (list (strcat "Top clearance " (ctr-offset-fmt c) " mm >= 300 mm."))))
+    ((>= c *CTR-OWNER-TOP-CLEARANCE-DIFFICULT*)
+     (ctr-offset-check "TOP_CLEARANCE" "WARNING"
+       (list (strcat "WARNING: Top clearance " (ctr-offset-fmt c)
+                     " mm is in the Appendix C difficult-condition range (150-299 mm); normal is >= 300 mm."))))
+    (T (ctr-offset-check "TOP_CLEARANCE" "WARNING"
+         (list (strcat "WARNING: Top clearance " (ctr-offset-fmt c) " mm is below the Appendix C minimum of 150 mm."))))))
+
+;; Appendix C: an up/down bend must also satisfy the cable minimum bending radius.
+;; No cable type / OD / radius data exists here, so this is never judged.
+(defun ctr-offset-check-cable-bend (res)
+  (ctr-offset-check "CABLE_BEND_RADIUS_CHECK" "NOT CHECKED"
+    (if (= (cdr (assoc "DIRECTION" res)) "LEVEL")
+      (list "Cable bend radius not checked.")
+      (list "WARNING: Cable minimum bending radius has not been verified."))))
+
+(defun ctr-offset-checks (res)
+  (list (ctr-offset-check-angle res) (ctr-offset-check-bottom res)
+        (ctr-offset-check-top res) (ctr-offset-check-cable-bend res)))
+
+(defun ctr-offset-find-check (checks id / c hit)
+  (foreach c checks (if (= (cdr (assoc "ID" c)) id) (setq hit c)))
+  hit)
+(defun ctr-offset-check-status (checks id) (cdr (assoc "STATUS" (ctr-offset-find-check checks id))))
+
+(defun ctr-offset-format-elevation (res)
+  (if (null (assoc "ELEVATION_REFERENCE" res))
+    nil
+    (list (strcat (ctr-offset-pad "Elev Reference") (cdr (assoc "ELEVATION_REFERENCE" res)))
+          (strcat (ctr-offset-pad "Reference Type") (cdr (assoc "REFERENCE_TYPE" res)))
+          (strcat (ctr-offset-pad "Tray Height") (ctr-offset-fmt (cdr (assoc "TRAY_HEIGHT" res))) " mm")
+          (strcat (ctr-offset-pad "Start B/C/T EL")
+                  (ctr-offset-fmt (cdr (assoc "START_BOTTOM_EL" res))) " / "
+                  (ctr-offset-fmt (cdr (assoc "START_CENTER_EL" res))) " / "
+                  (ctr-offset-fmt (cdr (assoc "START_TOP_EL" res))) " mm")
+          (strcat (ctr-offset-pad "End B/C/T EL")
+                  (ctr-offset-fmt (cdr (assoc "END_BOTTOM_EL" res))) " / "
+                  (ctr-offset-fmt (cdr (assoc "END_CENTER_EL" res))) " / "
+                  (ctr-offset-fmt (cdr (assoc "END_TOP_EL" res))) " mm"))))
+
+(defun ctr-offset-format-checks (checks / lines c l)
+  (setq lines (list "OWNER REQUIREMENT CHECKS (Appendix C; warnings only)"))
+  (foreach c checks
+    (setq lines (append lines (list (strcat (ctr-offset-pad (cdr (assoc "ID" c))) (cdr (assoc "STATUS" c))))))
+    (foreach l (cdr (assoc "LINES" c)) (setq lines (append lines (list (strcat "  " l))))))
+  lines)
+
 (defun ctr-offset-el (z) (strcat (if (>= z 0.0) "+" "") (rtos z 2 0)))
 
 ;; Reserved annotation text (draws nothing).  TRAY-LABEL e.g. "SCADA TRAY 300W".
+;; Owner Appendix C: tray elevation = BOTTOM elevation, two-point B.EL / T.EL.
+;; The centre line is never printed as the tray elevation; without an attached
+;; elevation model the lines say NOT SET.  No datum (e.g. +-0.00) is invented.
+(defun ctr-offset-annotation-el (prefix a b)
+  (cond ((or (null a) (null b)) (strcat prefix " NOT SET"))
+        ((< (abs (- a b)) *CTR-OFFSET-EPS*) (strcat prefix " " (ctr-offset-el a)))
+        (T (strcat prefix " " (ctr-offset-el a) " -> " (ctr-offset-el b)))))
+
 (defun ctr-offset-annotation (res tray-label / dir)
   (setq dir (ctr-offset-get res "DIRECTION"))
-  (list tray-label
-        (strcat "EL." (ctr-offset-el (ctr-offset-get res "START_Z")) " -> EL." (ctr-offset-el (ctr-offset-get res "END_Z")))
-        (if (= dir "LEVEL")
-          "LEVEL"
-          (strcat dir " " (rtos (ctr-offset-get res "ABSOLUTE_DELTA_Z") 2 0) " / "
-                  (rtos (ctr-offset-get res "ANGLE_DEG") 2 0) " deg"))
-        (strcat "RUN=" (rtos (ctr-offset-get res "HORIZONTAL_RUN") 2 0)
-                " / SLOPE=" (rtos (ctr-offset-get res "SLOPE_LENGTH") 2 0))))
+  (append
+    (list tray-label
+          (ctr-offset-annotation-el "B.EL" (ctr-offset-get res "START_BOTTOM_EL") (ctr-offset-get res "END_BOTTOM_EL"))
+          (ctr-offset-annotation-el "T.EL" (ctr-offset-get res "START_TOP_EL") (ctr-offset-get res "END_TOP_EL"))
+          (if (= dir "LEVEL")
+            "LEVEL"
+            (strcat dir " " (rtos (ctr-offset-get res "ABSOLUTE_DELTA_Z") 2 0) " / "
+                    (rtos (ctr-offset-get res "ANGLE_DEG") 2 0) " deg"))
+          (strcat "RUN=" (rtos (ctr-offset-get res "HORIZONTAL_RUN") 2 0)
+                  " / SLOPE=" (rtos (ctr-offset-get res "SLOPE_LENGTH") 2 0)))
+    (if (ctr-offset-get res "REFERENCE_TYPE")
+      (list (strcat "REF=" (ctr-offset-get res "REFERENCE_TYPE")))
+      nil)))
 
 ;; ---- CLI: prompts + printing only; all numbers come from the pure functions above ----
 (defun ctr-offset-print (lines / l) (foreach l lines (princ (strcat "\n" l))))
@@ -1684,7 +1893,24 @@ Specify next point or <Enter to finish>: "))
         ((or (= s "C") (= s "CUSTOM")) (getreal "\nCustom angle (deg): "))
         (T (atof s))))
 
-(defun c:CTOFFSET (/ mode sz ez run ang res feas avail)
+;; Choice prompt: Enter = LAST, otherwise exact name or a unique prefix; nil when invalid.
+(defun ctr-offset-ask-choice (label choices last / s c hit n txt)
+  (setq txt "")
+  (foreach c choices (setq txt (strcat txt (if (= txt "") "" "/") c)))
+  (setq s (strcase (getstring (strcat "\n" label " [" txt "] <" last ">: "))))
+  (if (= s "")
+    last
+    (progn
+      (setq n 0)
+      (foreach c choices
+        (if (= s (substr c 1 (strlen s))) (progn (setq n (1+ n)) (setq hit c))))
+      (if (= n 1) hit nil))))
+
+(defun ctr-offset-ask-height (/ v)
+  (setq v (getreal (strcat "\nTray height (mm) <" (rtos *CTR-OFFSET-LAST-HEIGHT* 2 0) ">: ")))
+  (if v v *CTR-OFFSET-LAST-HEIGHT*))
+
+(defun c:CTOFFSET (/ mode sz ez run ang res feas avail ref rtype hgt systype topclr)
   (setq mode (strcase (getstring "\nMode [RUN/ANGLE] <ANGLE>: ")))
   (cond ((or (= mode "") (= mode "A") (= mode "ANGLE")) (setq mode "ANGLE"))
         ((or (= mode "R") (= mode "RUN")) (setq mode "RUN"))
@@ -1692,33 +1918,51 @@ Specify next point or <Enter to finish>: "))
   (if (null mode)
     (princ "\nInvalid mode. Use RUN or ANGLE.")
     (progn
-      (setq sz (ctr-offset-ask-elev "Start" *CTR-OFFSET-LAST-START*))
-      (setq ez (ctr-offset-ask-elev "End" *CTR-OFFSET-LAST-END*))
-      (setq *CTR-OFFSET-LAST-START* sz *CTR-OFFSET-LAST-END* ez)
-      (cond
-        ((= mode "RUN")
-         (setq run (getreal "\nHorizontal run: "))
-         (setq res (ctr-offset-from-run sz ez run))
-         (if res
-           (ctr-offset-print (ctr-offset-format res))
-           (princ "\nInvalid horizontal run.\nValue must be greater than 0.")))
-        ((< (abs (- ez sz)) *CTR-OFFSET-EPS*)
-         (ctr-offset-print (ctr-offset-format (ctr-offset-from-angle sz ez 30.0))))
-        (T
-         (setq ang (ctr-offset-ask-angle))
-         (setq res (ctr-offset-from-angle sz ez ang))
-         (if (null res)
-           (princ "\nInvalid angle.\nAngle must be greater than 0 and less than 90 degrees.")
-           (progn
-             (ctr-offset-print (ctr-offset-format res))
-             (setq avail (getreal "\nAvailable horizontal space <Skip>: "))
-             (if avail
-               (progn
-                 (setq feas (ctr-offset-feasibility (ctr-offset-get res "ABSOLUTE_DELTA_Z") avail))
-                 (if feas
-                   (progn (princ "\n")
-                          (ctr-offset-print (ctr-offset-format-space feas (ctr-offset-get res "HORIZONTAL_RUN"))))
-                   (princ "\nInvalid horizontal space.\nValue must be greater than 0."))))))))))
+      (setq ref (ctr-offset-ask-choice "Elevation reference" *CTR-OFFSET-REFERENCES* *CTR-OFFSET-LAST-REF*))
+      (setq rtype (ctr-offset-ask-choice "Reference type" *CTR-OFFSET-REF-TYPES* *CTR-OFFSET-LAST-REFTYPE*))
+      (setq hgt (ctr-offset-ask-height))
+      (if (not (and ref rtype hgt (> hgt 0.0)))
+        (princ "\nInvalid elevation reference, reference type or tray height (height must be > 0).")
+        (progn
+          (setq *CTR-OFFSET-LAST-REF* ref *CTR-OFFSET-LAST-REFTYPE* rtype *CTR-OFFSET-LAST-HEIGHT* hgt)
+          (setq sz (ctr-offset-ask-elev (strcat "Start (" ref ")") *CTR-OFFSET-LAST-START*))
+          (setq ez (ctr-offset-ask-elev (strcat "End (" ref ")") *CTR-OFFSET-LAST-END*))
+          (setq *CTR-OFFSET-LAST-START* sz *CTR-OFFSET-LAST-END* ez)
+          (cond
+            ((= mode "RUN")
+             (setq run (getreal "\nHorizontal run: "))
+             (setq res (ctr-offset-from-run sz ez run))
+             (if (null res) (princ "\nInvalid horizontal run.\nValue must be greater than 0.")))
+            ((< (abs (- ez sz)) *CTR-OFFSET-EPS*)
+             (setq res (ctr-offset-from-angle sz ez 30.0)))
+            (T
+             (setq ang (ctr-offset-ask-angle))
+             (setq res (ctr-offset-from-angle sz ez ang))
+             (if (null res) (princ "\nInvalid angle.\nAngle must be greater than 0 and less than 90 degrees."))))
+          (if res
+            (progn
+              (if (/= (ctr-offset-get res "DIRECTION") "LEVEL")
+                (setq systype (ctr-offset-ask-choice "System type" *CTR-OFFSET-SYSTEM-TYPES* *CTR-OFFSET-LAST-SYSTEM*)))
+              (if systype (setq *CTR-OFFSET-LAST-SYSTEM* systype))
+              (setq topclr (getreal "\nTop clearance above tray (mm) <Skip>: "))
+              (setq res (ctr-offset-attach res ref rtype hgt systype topclr))
+              (if (null res)
+                (princ "\nInvalid system type.")
+                (progn
+                  (ctr-offset-print (ctr-offset-format res))
+                  (ctr-offset-print (ctr-offset-format-elevation res))
+                  (princ "\n")
+                  (ctr-offset-print (ctr-offset-format-checks (ctr-offset-checks res)))
+                  (if (and (= mode "ANGLE") (/= (ctr-offset-get res "DIRECTION") "LEVEL"))
+                    (progn
+                      (setq avail (getreal "\nAvailable horizontal space <Skip>: "))
+                      (if avail
+                        (progn
+                          (setq feas (ctr-offset-feasibility (ctr-offset-get res "ABSOLUTE_DELTA_Z") avail))
+                          (if feas
+                            (progn (princ "\n")
+                                   (ctr-offset-print (ctr-offset-format-space feas (ctr-offset-get res "HORIZONTAL_RUN"))))
+                            (princ "\nInvalid horizontal space.\nValue must be greater than 0."))))))))))))))
   (princ))
 
 ;; CTVER: which Router is REALLY loaded?  Identity comes from a loader / generated
