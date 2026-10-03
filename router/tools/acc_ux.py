@@ -26,7 +26,8 @@ def inline(path):
     return chr(10).join(l for l in lines if not l.lstrip().startswith("(load "))
 
 
-router_src = inline(r"D:/BLOCK/router/cable_tray_router.lsp")
+from ctr_paths import rp  # BLOCK router dir; CTR_BLOCK_ROUTER_DIR overrides D:/BLOCK/router
+router_src = inline(rp("cable_tray_router.lsp"))
 LF = chr(10)
 L = ["FILEDIA", "0", router_src]
 

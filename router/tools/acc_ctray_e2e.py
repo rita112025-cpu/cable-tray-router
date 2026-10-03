@@ -30,7 +30,8 @@ def inline(path):
 
 
 LF = chr(10)
-L = ["FILEDIA", "0", inline(r"D:/BLOCK/router/cable_tray_router.lsp")]
+from ctr_paths import rp  # BLOCK router dir; CTR_BLOCK_ROUTER_DIR overrides D:/BLOCK/router
+L = ["FILEDIA", "0", inline(rp("cable_tray_router.lsp"))]
 L += ['(princ (strcat "' + '\\n' + 'OBJ_BEFORE=" (itoa (ctr-count-all))))']
 # Exactly what a GUI user types: CTRAY, then the profile KEYWORD, then width,
 # then a single straight segment (0,0)->(3000,0), then Enter to finish.
