@@ -1527,6 +1527,200 @@ Specify next point or <Enter to finish>: "))
             (princ line))))))
   (princ))
 
+;;; ---------------------------------------------------------------
+;;; 10. VERTICAL OFFSET ENGINE  (CTOFFSET)  -- offset_mode GEOMETRIC only
+;;; Centre-line geometry of a height change: delta Z, slope, angle, true
+;;; slope length.  Units: mm.  The ctr-offset-* functions below are PURE
+;;; (no prompts, no drawing access, no system variables) and return
+;;; association lists with STRING keys, like the rest of this file, so
+;;; CSV / SQLite / DXF annotation can reuse the values.  Internal values are
+;;; never rounded; only ctr-offset-fmt rounds (2 decimals).
+;;; NOT implemented: FITTING mode (real vertical bend geometry), cable
+;;; bending radius, collision, 3D.  *CTR-OFFSET-MODES* reserves the name.
+;;; AutoLISP has no TAN: tan(a) = sin(a)/cos(a), safe because 0 < a < 90.
+;;; ---------------------------------------------------------------
+(setq *CTR-OFFSET-MODES*      '("GEOMETRIC" "FITTING"))   ; only GEOMETRIC is implemented
+(setq *CTR-OFFSET-MODE*       "GEOMETRIC")
+(setq *CTR-OFFSET-STD-ANGLES* '(15.0 22.5 30.0 45.0))
+(setq *CTR-OFFSET-EPS*        1e-9)   ; float noise only (600/tan(45) = 600.0000000000001); NOT a safety factor
+(if (not (boundp (quote *CTR-OFFSET-LAST-START*))) (setq *CTR-OFFSET-LAST-START* 3300.0))
+(if (not (boundp (quote *CTR-OFFSET-LAST-END*)))   (setq *CTR-OFFSET-LAST-END*   2700.0))
+
+(defun ctr-offset-rad (deg) (* deg (/ pi 180.0)))
+(defun ctr-offset-deg (rad) (* rad (/ 180.0 pi)))
+(defun ctr-offset-tan (rad) (/ (sin rad) (cos rad)))
+
+(defun ctr-offset-valid-run-p (run) (and (numberp run) (> run 0.0)))
+(defun ctr-offset-valid-angle-p (ang) (and (numberp ang) (> ang 0.0) (< ang 90.0)))
+
+(defun ctr-offset-direction (dz)
+  (cond ((< (abs dz) *CTR-OFFSET-EPS*) "LEVEL")
+        ((> dz 0.0) "UP")
+        (T "DOWN")))
+
+(defun ctr-offset-result (sz ez run ang slen / dz adz)
+  (setq dz (- ez sz) adz (abs dz))
+  (list (cons "OFFSET_MODE" *CTR-OFFSET-MODE*)
+        (cons "START_Z" sz) (cons "END_Z" ez)
+        (cons "DELTA_Z" dz) (cons "ABSOLUTE_DELTA_Z" adz)
+        (cons "DIRECTION" (ctr-offset-direction dz))
+        (cons "HORIZONTAL_RUN" run)
+        (cons "ANGLE_DEG" ang)
+        (cons "SLOPE_RATIO" (if (> run 0.0) (/ adz run) 0.0))
+        (cons "SLOPE_PERCENT" (if (> run 0.0) (* 100.0 (/ adz run)) 0.0))
+        (cons "SLOPE_LENGTH" slen)))
+
+;; Known horizontal run.  nil when run <= 0.  LEVEL is allowed: angle 0, slope length = run.
+(defun ctr-offset-from-run (sz ez run / dz)
+  (if (not (ctr-offset-valid-run-p run))
+    nil
+    (progn
+      (setq dz (- (float ez) (float sz)) run (float run))
+      (ctr-offset-result (float sz) (float ez) run
+                         (ctr-offset-deg (atan (/ (abs dz) run)))
+                         (sqrt (+ (* run run) (* dz dz)))))))
+
+;; Known angle.  LEVEL needs no angle (not validated): run / length / angle all 0.
+;; nil when the angle is outside (0,90) and there IS a height change.
+(defun ctr-offset-from-angle (sz ez ang / dz adz a)
+  (setq dz (- (float ez) (float sz)) adz (abs dz))
+  (cond
+    ((< adz *CTR-OFFSET-EPS*) (ctr-offset-result (float sz) (float ez) 0.0 0.0 0.0))
+    ((not (ctr-offset-valid-angle-p ang)) nil)
+    (T (setq a (ctr-offset-rad (float ang)))
+       (ctr-offset-result (float sz) (float ez) (/ adz (ctr-offset-tan a)) (float ang) (/ adz (sin a))))))
+
+;; Horizontal run needed by |dz| at ANG degrees (nil if ANG invalid).
+(defun ctr-offset-required-run (adz ang)
+  (if (ctr-offset-valid-angle-p ang) (/ adz (ctr-offset-tan (ctr-offset-rad (float ang)))) nil))
+
+;; Space check for |dz| against AVAIL.  nil when avail <= 0.  Standard angle: OK iff required_run <= avail.
+(defun ctr-offset-feasibility (adz avail / std req out)
+  (if (not (ctr-offset-valid-run-p avail))
+    nil
+    (progn
+      (foreach std *CTR-OFFSET-STD-ANGLES*
+        (setq req (ctr-offset-required-run adz std))
+        (setq out (cons (list std req (<= req (+ avail *CTR-OFFSET-EPS*))) out)))
+      (list (cons "AVAILABLE" (float avail))
+            (cons "MIN_ANGLE_DEG" (ctr-offset-deg (atan (/ adz avail))))
+            (cons "ANGLES" (reverse out))))))
+
+(defun ctr-offset-fmt (v / n f)
+  ;; fixed 2 decimals, independent of DIMZIN / UNITMODE (rtos may drop trailing zeros); no "-0.00"
+  (setq n (fix (+ (* (abs v) 100.0) 0.5)) f (rem n 100))
+  (strcat (if (and (< v 0.0) (> n 0)) "-" "") (itoa (/ n 100)) "." (if (< f 10) "0" "") (itoa f)))
+(defun ctr-offset-fmt1 (v / n)
+  (setq n (fix (+ (* (abs v) 10.0) 0.5)))
+  (strcat (itoa (/ n 10)) "." (itoa (rem n 10))))
+(defun ctr-offset-pad (label) (strcat label (substr "                " 1 (max 0 (- 16 (strlen label)))) ": "))
+(defun ctr-offset-get (res key) (cdr (assoc key res)))
+
+;; Result alist -> report text (list of lines, no leading newline).
+(defun ctr-offset-format (res / dir lines rule)
+  (setq dir (ctr-offset-get res "DIRECTION") rule "--------------------------------")
+  (setq lines (list rule "CABLE TRAY VERTICAL OFFSET" rule
+        (strcat (ctr-offset-pad "Start Z") (ctr-offset-fmt (ctr-offset-get res "START_Z")) " mm")
+        (strcat (ctr-offset-pad "End Z") (ctr-offset-fmt (ctr-offset-get res "END_Z")) " mm")
+        (strcat (ctr-offset-pad "Delta Z") (ctr-offset-fmt (ctr-offset-get res "DELTA_Z")) " mm")
+        (strcat (ctr-offset-pad "Direction") dir)))
+  (if (= dir "LEVEL")
+    (setq lines (append lines (list "" "No vertical offset required."
+        (strcat (ctr-offset-pad "Angle") "0.00 deg")
+        (strcat (ctr-offset-pad "Slope") "0.00 %")
+        (strcat (ctr-offset-pad "Slope Length") (ctr-offset-fmt (ctr-offset-get res "SLOPE_LENGTH")) " mm"))))
+    (setq lines (append lines (list ""
+        (strcat (ctr-offset-pad "Angle") (ctr-offset-fmt (ctr-offset-get res "ANGLE_DEG")) " deg")
+        (strcat (ctr-offset-pad "Horizontal Run") (ctr-offset-fmt (ctr-offset-get res "HORIZONTAL_RUN")) " mm")
+        (strcat (ctr-offset-pad "Slope Length") (ctr-offset-fmt (ctr-offset-get res "SLOPE_LENGTH")) " mm")
+        (strcat (ctr-offset-pad "Slope") (ctr-offset-fmt (ctr-offset-get res "SLOPE_PERCENT")) " %")))))
+  (append lines (list rule)))
+
+;; Space-check report lines.  FEAS from ctr-offset-feasibility; REQ = required run of the chosen angle.
+(defun ctr-offset-format-space (feas req / avail a lines)
+  (setq avail (ctr-offset-get feas "AVAILABLE"))
+  (setq lines nil)
+  (if req
+    (if (<= req (+ avail *CTR-OFFSET-EPS*))
+      (setq lines (list "SPACE CHECK : OK"
+                        (strcat "Required    : " (ctr-offset-fmt req) " mm")
+                        (strcat "Available   : " (ctr-offset-fmt avail) " mm")))
+      (setq lines (list "SPACE CHECK : NG"
+                        (strcat "Required    : " (ctr-offset-fmt req) " mm")
+                        (strcat "Available   : " (ctr-offset-fmt avail) " mm")
+                        (strcat "Shortage    : " (ctr-offset-fmt (- req avail)) " mm")))))
+  (setq lines (append lines (list (strcat "Minimum required angle : "
+                                          (ctr-offset-fmt (ctr-offset-get feas "MIN_ANGLE_DEG")) " deg")
+                                  "" "ANGLE FEASIBILITY")))
+  (foreach a (ctr-offset-get feas "ANGLES")
+    (setq lines (append lines (list (strcat (ctr-offset-fmt1 (car a)) " deg   " (if (caddr a) "OK" "NG"))))))
+  lines)
+
+(defun ctr-offset-el (z) (strcat (if (>= z 0.0) "+" "") (rtos z 2 0)))
+
+;; Reserved annotation text (draws nothing).  TRAY-LABEL e.g. "SCADA TRAY 300W".
+(defun ctr-offset-annotation (res tray-label / dir)
+  (setq dir (ctr-offset-get res "DIRECTION"))
+  (list tray-label
+        (strcat "EL." (ctr-offset-el (ctr-offset-get res "START_Z")) " -> EL." (ctr-offset-el (ctr-offset-get res "END_Z")))
+        (if (= dir "LEVEL")
+          "LEVEL"
+          (strcat dir " " (rtos (ctr-offset-get res "ABSOLUTE_DELTA_Z") 2 0) " / "
+                  (rtos (ctr-offset-get res "ANGLE_DEG") 2 0) " deg"))
+        (strcat "RUN=" (rtos (ctr-offset-get res "HORIZONTAL_RUN") 2 0)
+                " / SLOPE=" (rtos (ctr-offset-get res "SLOPE_LENGTH") 2 0))))
+
+;; ---- CLI: prompts + printing only; all numbers come from the pure functions above ----
+(defun ctr-offset-print (lines / l) (foreach l lines (princ (strcat "\n" l))))
+
+(defun ctr-offset-ask-elev (label last / v)
+  (setq v (getreal (strcat "\n" label " elevation <" (rtos last 2 0) ">: ")))
+  (if v v last))
+
+;; Returns degrees (any real; 0.0 for unparsable text so validation rejects it).
+(defun ctr-offset-ask-angle (/ s)
+  (setq s (strcase (getstring "\nOffset angle [15/22.5/30/45/Custom] <30>: ")))
+  (cond ((= s "") 30.0)
+        ((or (= s "C") (= s "CUSTOM")) (getreal "\nCustom angle (deg): "))
+        (T (atof s))))
+
+(defun c:CTOFFSET (/ mode sz ez run ang res feas avail)
+  (setq mode (strcase (getstring "\nMode [RUN/ANGLE] <ANGLE>: ")))
+  (cond ((or (= mode "") (= mode "A") (= mode "ANGLE")) (setq mode "ANGLE"))
+        ((or (= mode "R") (= mode "RUN")) (setq mode "RUN"))
+        (T (setq mode nil)))
+  (if (null mode)
+    (princ "\nInvalid mode. Use RUN or ANGLE.")
+    (progn
+      (setq sz (ctr-offset-ask-elev "Start" *CTR-OFFSET-LAST-START*))
+      (setq ez (ctr-offset-ask-elev "End" *CTR-OFFSET-LAST-END*))
+      (setq *CTR-OFFSET-LAST-START* sz *CTR-OFFSET-LAST-END* ez)
+      (cond
+        ((= mode "RUN")
+         (setq run (getreal "\nHorizontal run: "))
+         (setq res (ctr-offset-from-run sz ez run))
+         (if res
+           (ctr-offset-print (ctr-offset-format res))
+           (princ "\nInvalid horizontal run.\nValue must be greater than 0.")))
+        ((< (abs (- ez sz)) *CTR-OFFSET-EPS*)
+         (ctr-offset-print (ctr-offset-format (ctr-offset-from-angle sz ez 30.0))))
+        (T
+         (setq ang (ctr-offset-ask-angle))
+         (setq res (ctr-offset-from-angle sz ez ang))
+         (if (null res)
+           (princ "\nInvalid angle.\nAngle must be greater than 0 and less than 90 degrees.")
+           (progn
+             (ctr-offset-print (ctr-offset-format res))
+             (setq avail (getreal "\nAvailable horizontal space <Skip>: "))
+             (if avail
+               (progn
+                 (setq feas (ctr-offset-feasibility (ctr-offset-get res "ABSOLUTE_DELTA_Z") avail))
+                 (if feas
+                   (progn (princ "\n")
+                          (ctr-offset-print (ctr-offset-format-space feas (ctr-offset-get res "HORIZONTAL_RUN"))))
+                   (princ "\nInvalid horizontal space.\nValue must be greater than 0."))))))))))
+  (princ))
+
 ;; CTVER: which Router is REALLY loaded?  Identity comes from a loader / generated
 ;; router_version.lsp (*CTR-ROUTER-...*); a core loaded without them says so explicitly.
 (defun ctr-ver-val (sym fallback)
@@ -1550,5 +1744,5 @@ Specify next point or <Enter to finish>: "))
   (c:CTSET))
 
 (princ (strcat "\ncable_tray_router " *CTR-VERSION*
-               " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD, CTVER  (advanced: CTRAY, CTRAYUPDATE)"))
+               " loaded.  Commands: CT, CTU, CTSET, CTDEBUG, CTINSPECT, CTRELOAD, CTVER, CTOFFSET  (advanced: CTRAY, CTRAYUPDATE)"))
 (princ)
