@@ -17,7 +17,11 @@ import tempfile
 from pathlib import Path
 
 ACCORE = r"C:\Program Files\Autodesk\AutoCAD 2027\accoreconsole.exe"
-BLOCK = Path(r"D:\BLOCK\router")
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ctr_paths import get_block_router_dir, lisp_path  # noqa: E402
+
+BLOCK = get_block_router_dir()   # D:\BLOCK\router unless CTR_BLOCK_ROUTER_DIR / CTR_BLOCK_DIR say otherwise
+BLOCK_L = lisp_path(BLOCK)       # same, forward slashes, as it appears in generated loader text
 WORK = Path(__file__).resolve().parents[2] / "router"
 V1_LOADER, V2_LOADER = BLOCK / "cable_tray_router_v1.lsp", BLOCK / "cable_tray_router_v2.lsp"
 V1_CORE = BLOCK / "stable" / "cable_tray_router.lsp"
@@ -102,7 +106,7 @@ def main() -> int:
     v1blob = subprocess.run(["git", "-C", str(WORK.parent), "show", "365645a:router/cable_tray_router.lsp"], capture_output=True, check=True).stdout
     check("stable core == git blob 365645a", V1_CORE.read_bytes() == v1blob)
     check("stable core is read-only", not (V1_CORE.stat().st_mode & 0o200))
-    check("V1 loader points at stable core", "D:/BLOCK/router/stable/cable_tray_router.lsp" in V1_LOADER.read_text(encoding="utf-8"))
+    check("V1 loader points at stable core", BLOCK_L + "/stable/cable_tray_router.lsp" in V1_LOADER.read_text(encoding="utf-8"))
     check("V2 loader points at the integration core + stamp",
           str(V2_CORE).replace("\\", "/") in V2_LOADER.read_text(encoding="utf-8") and str(STAMP).replace("\\", "/") in V2_LOADER.read_text(encoding="utf-8"))
 
@@ -115,10 +119,10 @@ def main() -> int:
              '(princ (strcat (chr 10) "T:NAMES=" (vl-prin1-to-string (ctr-profile-names)) (chr 10)))'])
     out = "\n".join(l for l in t.splitlines() if not l.startswith(("(", " ")))
     check("S2 V1 announces 'Loaded: V1 STABLE'", "[CTRAY] Loaded: V1 STABLE" in out)
-    check("S2 V1 announces source path", "[CTRAY] Source: D:/BLOCK/router/stable/cable_tray_router.lsp" in out)
+    check("S2 V1 announces source path", "[CTRAY] Source: " + BLOCK_L + "/stable/cable_tray_router.lsp" in out)
     check("S2 V1 forces profile SCADA_BASIC (stale SCADA_V2 reset)", "[CTRAY] Profile: SCADA_BASIC" in out)
     check("S2 V1 commit 365645a", "[CTRAY] Router commit: 365645a" in out)
-    check("S2 CTVER (V1): Version/Commit/Source lines", all(k in out for k in ("Version : V1 STABLE", "Commit  : 365645a", "Source  : D:/BLOCK/router/stable/cable_tray_router.lsp")))
+    check("S2 CTVER (V1): Version/Commit/Source lines", all(k in out for k in ("Version : V1 STABLE", "Commit  : 365645a", "Source  : " + BLOCK_L + "/stable/cable_tray_router.lsp")))
     names = lines(t, "T:NAMES=")
     check("S2 V1 core has no SCADA_V2 profile", names and "SCADA_V2" not in names[0], str(names))
 
@@ -154,7 +158,7 @@ def main() -> int:
     print("      S6 observed:", "LOADED" if loaded else "BLOCKED/FAILED cleanly")
 
     after = hashlib.sha256(UNTOUCHED.read_bytes()).hexdigest()
-    check("D:/BLOCK/router/cable_tray_router.lsp untouched", before == after)
+    check(BLOCK_L + "/cable_tray_router.lsp untouched", before == after)
     bad = [r for r in results if not r[1]]
     print("\n%d checks, %d failed" % (len(results), len(bad)))
     return 1 if bad else 0
