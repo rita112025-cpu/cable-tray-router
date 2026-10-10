@@ -188,7 +188,7 @@
         ;; spacing MAX 225 mm.  MEASURED Dynamic Block geometry is 250 (BLOCKARRAYACTION
         ;; group 141, 2026-09-27 GUI check, see block_spec_measured.md) = NON-COMPLIANT.
         ;; The router renders the owner value; the 250 mm block itself still needs a
-        ;; separate geometry update.  Do not set this back to the measured 250.
+        ;; separate geometry update (tracked: issue #4).  Do not set this back to the measured 250.
         (cons "STRAIGHT_RUNG_SPACING" 225.0)
         (cons "STRAIGHT_RUNG_FIRST_OFFSET" 125.0)          ; confirmed (authoring sample + GUI stretch test @ length 1000)
         ;; NEEDS_USER_CONFIRMATION: what happens at the FAR end of a segment --
@@ -1563,6 +1563,7 @@ Specify next point or <Enter to finish>: "))
 ;;; association lists with STRING keys, like the rest of this file, so
 ;;; CSV / SQLite / DXF annotation can reuse the values.  Internal values are
 ;;; never rounded; only ctr-offset-fmt rounds (2 decimals).
+;;; Clearances to other objects (water pipe / equipment / other trays): issue #7.
 ;;; NOT implemented: FITTING mode (real vertical bend geometry), cable
 ;;; bending radius, collision, 3D.  *CTR-OFFSET-MODES* reserves the name.
 ;;; AutoLISP has no TAN: tan(a) = sin(a)/cos(a), safe because 0 < a < 90.
@@ -1735,7 +1736,7 @@ Specify next point or <Enter to finish>: "))
         nil))
     nil))
 
-;; Pending-verification record (NOT a production FAIL).  Owner: cable-tray inner bend
+;; Pending-verification record (NOT a production FAIL; tracked: issue #5).  Owner: cable-tray inner bend
 ;; radius should not be below 300 mm (Appendix C).  264.5 is the hand-measured inner arc
 ;; radius of the ELBOW_V2 candidate; which block / tray width it belongs to is unconfirmed,
 ;; so ELBOW geometry is deliberately left untouched.
@@ -1756,7 +1757,7 @@ Specify next point or <Enter to finish>: "))
 
 ;; Appendix C: up/down bends of a power tray should not exceed a 45 deg "yu-jiao"
 ;; (residual angle), weak-current 60 deg.  The meaning of "yu-jiao" is NOT confirmed to
-;; equal the CTOFFSET slope angle, so this is a WARNING only.
+;; equal the CTOFFSET slope angle, so this is a WARNING only (tracked: issue #6).
 (defun ctr-offset-check-angle (res / st ang lim)
   (setq st (cdr (assoc "SYSTEM_TYPE" res)) ang (cdr (assoc "ANGLE_DEG" res)))
   (setq lim (if st (ctr-offset-angle-limit st) nil))
@@ -1814,7 +1815,7 @@ Specify next point or <Enter to finish>: "))
          (list (strcat "WARNING: Top clearance " (ctr-offset-fmt c) " mm is below the Appendix C minimum of 150 mm."))))))
 
 ;; Appendix C: an up/down bend must also satisfy the cable minimum bending radius.
-;; No cable type / OD / radius data exists here, so this is never judged.
+;; No cable type / OD / radius data exists here, so this is never judged (see issue #7).
 (defun ctr-offset-check-cable-bend (res)
   (ctr-offset-check "CABLE_BEND_RADIUS_CHECK" "NOT CHECKED"
     (if (= (cdr (assoc "DIRECTION" res)) "LEVEL")

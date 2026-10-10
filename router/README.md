@@ -56,11 +56,11 @@ owner rules. Metadata and owner checks are layered on top and only WARN.
 - `REFERENCE_TYPE` = `FLOOR_RELATIVE` | `ABSOLUTE`. Stored and shown only; no datum conversion, and `FLOOR_RELATIVE` is never assumed to be +-0.00.
 - Annotation (`ctr-offset-annotation`) prints `B.EL` and `T.EL` (Appendix C: tray elevation is the underside, two-point marking), never the centre line as the tray elevation.
 - Checks (`ctr-offset-checks`, statuses PASS / WARNING / NOT CHECKED / N/A):
-  - `OFFSET_ANGLE`: POWER > 45 deg, LOW_CURRENT / SCADA > 60 deg warns. The owner term is "yu-jiao" (residual angle), not yet confirmed equal to the CTOFFSET slope angle, so it is a warning marked "Interpretation pending".
+  - `OFFSET_ANGLE`: POWER > 45 deg, LOW_CURRENT / SCADA > 60 deg warns. The owner term is "yu-jiao" (residual angle), not yet confirmed equal to the CTOFFSET slope angle, so it is a warning marked "Interpretation pending" (issue #6).
   - `BOTTOM_HEIGHT`: BOTTOM_EL < 2500 mm warns, only for `FLOOR_RELATIVE`; `ABSOLUTE` is NOT CHECKED.
   - `TOP_CLEARANCE`: only when the user gives it. >= 300 PASS; 150-299 warns (difficult-condition range); < 150 warns (below minimum). The slab level is never guessed.
   - `CABLE_BEND_RADIUS_CHECK`: always NOT CHECKED (no cable data); an offset adds "Cable minimum bending radius has not been verified."
-- Not in `CTOFFSET` (belongs to a future route inspector): clearances to water pipes / equipment / other trays, multi-layer spacing, joints above trays, wall/column distance.
+- Not in `CTOFFSET` (belongs to a future route inspector, issue #7): clearances to water pipes / equipment / other trays, multi-layer spacing, joints above trays, wall/column distance.
 
-Tray ladder rung spacing is 225 mm (owner maximum); the real Dynamic Block still measures 250 mm and is non-compliant. See `block_spec_measured.md`.
+Tray ladder rung spacing is 225 mm (owner maximum); the real Dynamic Block still measures 250 mm and is non-compliant (issue #4). See `block_spec_measured.md`.
 Tests: `python tools/run_tests.py` (headless) and `tools/acc_ctoffset.py` (AutoCAD Core Console prompt flow).

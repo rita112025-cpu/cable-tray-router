@@ -108,10 +108,10 @@ What the router does now:
 
 Known unresolved:
 
-- The Dynamic Block `SCADA_TRAY_STRAIGHT` / `_V2` (and the "750 tray" source) still has 250 mm spacing; its BLOCKARRAYACTION array must be updated in the AutoCAD GUI. Until then a generated ladder (225) and a manually inserted block (250) differ.
+- The Dynamic Block `SCADA_TRAY_STRAIGHT` / `_V2` (and the "750 tray" source) still has 250 mm spacing; its BLOCKARRAYACTION array must be updated in the AutoCAD GUI. Until then a generated ladder (225) and a manually inserted block (250) differ. Tracked: issue #4.
 - The GUI observation above (count at lengths 1100/1150 = 4) was made at 250 mm and is not a statement about 225 mm.
 
 ## ELBOW inner bend radius (validation record, not a failure)
 
 Owner (Appendix C): cable tray inner bend radius should not be below 300 mm.
-`ELBOW_INNER_RADIUS_REQUIRES_VERIFICATION`: owner minimum 300 mm; measured candidate 264.5 mm (ELBOW_V2, hand-measured inner arc radius); block / tray-width mapping UNCONFIRMED. ELBOW geometry was deliberately NOT changed and nothing is judged FAIL until the block and width are identified. Machine-readable copy: `*CTR-ELBOW-INNER-RADIUS-RECORD*`.
+`ELBOW_INNER_RADIUS_REQUIRES_VERIFICATION`: owner minimum 300 mm; measured candidate 264.5 mm (ELBOW_V2, hand-measured inner arc radius); block / tray-width mapping UNCONFIRMED. ELBOW geometry was deliberately NOT changed and nothing is judged FAIL until the block and width are identified. Machine-readable copy: `*CTR-ELBOW-INNER-RADIUS-RECORD*`. Tracked: issue #5.
