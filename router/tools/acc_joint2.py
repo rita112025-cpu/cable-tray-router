@@ -22,9 +22,10 @@ def inline(path):
     return chr(10).join(l for l in lines if not l.lstrip().startswith("(load "))
 
 
-inline_src = (inline(r"D:/BLOCK/router/cable_tray_router.lsp") + chr(10)
-              + inline(r"D:/BLOCK/router/tools/it_scenario.lsp") + chr(10)
-              + inline(r"D:/BLOCK/router/tools/it_joint2.lsp"))
+from ctr_paths import rp  # BLOCK router dir; CTR_BLOCK_ROUTER_DIR overrides D:/BLOCK/router
+inline_src = (inline(rp("cable_tray_router.lsp")) + chr(10)
+              + inline(rp("tools/it_scenario.lsp")) + chr(10)
+              + inline(rp("tools/it_joint2.lsp")))
 LF = chr(10)
 scr = work / "j.scr"
 scr.write_bytes((LF.join(["FILEDIA", "0", inline_src, "(it-joint2)",

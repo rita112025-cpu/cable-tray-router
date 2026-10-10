@@ -17,7 +17,8 @@ def inline(path):
     src = Path(path).read_text(encoding="utf-8")
     parts = [m.group(0) for m in TOKEN.finditer(src) if not m.group(0).startswith(";")]
     return chr(10).join(l.rstrip() for l in "".join(parts).splitlines() if l.strip())
-L = ["FILEDIA", "0", inline(r"D:/BLOCK/router/cable_tray_router.lsp")]
+from ctr_paths import rp  # BLOCK router dir; CTR_BLOCK_ROUTER_DIR overrides D:/BLOCK/router
+L = ["FILEDIA", "0", inline(rp("cable_tray_router.lsp"))]
 L += ['(princ (strcat "\nOBJ_BEFORE=" (itoa (ctr-count-all))))']
 if mode in ("full", "freehand"):
     L += (["CTRAY", "300", "0,0", "3000,7", "3009,2000", "5000,2013", ""] if mode == "freehand" else ["CTRAY", "300", "0,0", "3000,0", "3000,2000", "5000,2000", ""])

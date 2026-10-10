@@ -11,6 +11,13 @@ Writes
 It never modifies <block-router-dir>/cable_tray_router.lsp or anything else in that folder, and never runs
 git commands that change state (only rev-parse / log / status / show).
 The generated LISP contains no backslash characters and no router logic.
+
+STAMP SEMANTICS (fixed rule, avoids chasing SHAs): the commit written into router_version.lsp is the SOURCE commit = HEAD of
+the worktree when the stamp was generated, i.e. "this loader was generated from that version of the Router source".
+It is NOT the commit that contains the stamp: the stamp is generated and git-ignored, never committed, so there is no
+self-reference. A commit that only touches docs / tests / tools does not make the stamp stale; what matters is that the
+stamped commit has the same router/cable_tray_router.lsp as the worktree (tools/test_loaders.py checks exactly that).
+Regenerate after switching branches or after any commit that changes cable_tray_router.lsp, on the branch AutoCAD should load.
 """
 from __future__ import annotations
 

@@ -36,3 +36,13 @@ measured from the DWG/DXF - see block_spec_measured.md.
    D:\BLOCK\DEFAULT\ to BE the "DEFAULT" profile's new block set, say so and I'll
    remeasure/re-point DEFAULT (which means re-validating its whole pipeline again,
    since the geometry there differs from what's tested today).
+
+## Owner-requirement items (added 2026-10-03)
+
+10. **Dynamic Block rung spacing 250 -> 225.** Owner maximum is 225 mm; the real block measures 250 mm
+    (NON-COMPLIANT). The router already renders 225. The block itself must be updated in the GUI.
+11. **ELBOW inner radius** (`ELBOW_INNER_RADIUS_REQUIRES_VERIFICATION`). Owner minimum 300 mm; candidate 264.5 mm
+    from ELBOW_V2, block / tray-width mapping unconfirmed. Identify the block and width before judging it.
+12. **Meaning of "yu-jiao" (residual angle)** in Appendix C (power <= 45, weak current <= 60): confirm whether it
+    equals the CTOFFSET slope angle. Until then the angle check is a warning only.
+13. **Cable minimum bending radius**: no cable type / OD / radius data is modelled; the check is NOT CHECKED.
